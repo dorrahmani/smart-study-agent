@@ -1,0 +1,6 @@
+{
+  "security": {"auth": {"selectedType": "oauth-personal"}},
+  "general": {"disableAutoUpdate": true, "disableUpdateNag": true},
+  "privacy": {"usageStatisticsEnabled": false},
+  "telemetry": {"enabled": false}
+}

@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────
+# 🔴 SECRETS — never commit. If one ever lands in history it is
+#    effectively permanent; rotate the credential, don't just delete.
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+config/secrets/
+config/gmail_token.pickle
+config/gmail_token.pickle*
+*.pickle
+*credentials*.json
+*token*.json
+*.key
+*.pem
+
+# ── personal data of other people (PII) ──
+config/recipients.json
+config/recipients_full.json
+
+# ── volatile state (rewritten constantly; backed up separately) ──
+config/sent_log.json
+config/reviewer_sent_log.json
+config/approval_log.json
+config/notebooklm_notebooks.json
+config/api_budget.json
+config/scheduled_tasks.lock
+data/
+logs/
+backups/
+
+# ── bulk / generated output ──
+pilot_run_1/
+_s/
+*.mp3
+*.mp4
+*.wav
+*.srt
+*.png
+*.jpg
+*.jpeg
+!design/**/*.png
+
+# ── python ──
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ── os / editor ──
+Thumbs.db
+.DS_Store
+*.swp
+
+# ── backups of any of the above (.bak variants slipped through) ──
+*.bak
+config/recipients*
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/
+
+# ── personal config (copy from the *.example.yaml files) ──
+config/courses.yaml
+config/professors.yaml
+config/*.env
+config/*.env.*
+config/gcal_token.json
+config/tau_mail_token.json
+storage_state*.json
+.notebooklm/
+
+venv_wa/

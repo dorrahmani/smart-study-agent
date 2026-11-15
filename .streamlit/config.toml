@@ -1,0 +1,23 @@
+# Light and dark follow the viewer's system; dashboard/ui/theme.py has the same two palettes.
+[theme]
+font = "sans-serif"
+baseRadius = "medium"
+
+[theme.light]
+primaryColor = "#4f6bd8"
+backgroundColor = "#f8f9fc"
+secondaryBackgroundColor = "#edf0f7"
+textColor = "#1e2433"
+
+[theme.dark]
+primaryColor = "#8ea6f0"
+backgroundColor = "#11151d"
+secondaryBackgroundColor = "#1a1f2a"
+textColor = "#e7eaf1"
+
+[server]
+headless = false
+port = 8501
+
+[browser]
+gatherUsageStats = false

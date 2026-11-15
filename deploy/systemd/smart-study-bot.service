@@ -1,0 +1,20 @@
+[Unit]
+Description=Smart Study Agent Telegram Bot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/smart_study_agent
+ExecStart=/home/ubuntu/smart_study_agent/venv/bin/python -m bot.telegram_bot
+Restart=always
+RestartSec=10
+Environment=PYTHONIOENCODING=utf-8
+Environment=TZ=Asia/Jerusalem
+StandardOutput=append:/home/ubuntu/smart_study_agent/logs/bot.log
+StandardError=append:/home/ubuntu/smart_study_agent/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target

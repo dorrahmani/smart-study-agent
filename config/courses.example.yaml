@@ -1,0 +1,409 @@
+# ════════════════════════════════════════════════════════════════════
+#  config/courses.example.yaml — EXAMPLE course config.
+#  Copy to config/courses.yaml (gitignored) and replace with YOUR courses:
+#    python scripts/setup_check.py --init      (does the copy for you)
+#  Per course:
+#    name / course_code      – title and catalog number as shown in my.tau
+#    my_sessions             – YOUR group's weekly slots (day: sun..thu, local time);
+#                              the collector keeps only recordings in these slots
+#    sources.panopto.folder_id – the Panopto folder GUID of the course
+#                              (scripts/find_panopto_folders.py lists them)
+#    sources.moodle.course_id  – the number in moodle.tau.ac.il/course/view.php?id=…
+#    lecture/tutorial_keywords – optional fallback: words in the recording title
+#  settings.schedule.semester_start/end – the pipeline is idle outside this window.
+#  All ids, names, rooms and slots below are placeholders.
+# ════════════════════════════════════════════════════════════════════
+courses:
+  discrete_math_2:
+    name: מתמטיקה בדידה 2
+    course_code: 03681119
+    board_reading: true
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    sources:
+      panopto:
+        enabled: true
+        folder_id: 00000000-0000-4000-8000-000000000018
+        search_query: מתמטיקה בדידה 2
+        lecture_keywords:
+        - מרצה_ע
+        - מרצה_ב
+        - מרצה_א
+        - הרצאה
+        tutorial_keywords:
+        - תרגול 13
+        - מרצה_פ
+        - מרצה_מ
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        fallback_tutorial_keywords:
+        - תרגול
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: '999000007'
+        file_types:
+        - .pdf
+  microeconomics:
+    name: מיקרו כלכלה א'
+    course_code: '10112103'
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    sources:
+      panopto:
+        enabled: true
+        folder_id: 00000000-0000-4000-8000-000000000016
+        tutorial_folder_id: 00000000-0000-4000-8000-000000000012
+        search_query: מיקרו כלכלה
+        lecture_keywords:
+        - מרצה_ה
+        - מרצה_ט
+        - מרצה_ל
+        - lecturer_h
+        - lecturer_g
+        - מיקרו כלכלה
+        - microeconomics
+        - שיעור
+        tutorial_keywords:
+        - מרצה_ב1
+        - מרצה_נ
+        - lecturer_o
+        - תרגול
+        - תרגיל
+        - פתרון
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        fallback_tutorial_keywords:
+        - תרגול
+        - תרגיל
+        - פתרון
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: '9990000001'
+        file_types:
+        - .pdf
+  linear_algebra_2:
+    name: אלגברה לינארית 2ב
+    course_code: '03661120'
+    board_reading: true
+    weekly_schedule:
+      max_lectures: 2
+      max_tutorials: 1
+    sources:
+      panopto:
+        enabled: true
+        folder_id: 00000000-0000-4000-8000-000000000013
+        search_query: אלגברה לינארית 2
+        lecture_keywords:
+        - מרצה_ז
+        - מרצה_צ
+        - lecturer_f
+        tutorial_keywords:
+        - מרצה_ר
+        - מרצה_ק
+        - lecturer_j
+        - מרצה_ת
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        fallback_tutorial_keywords:
+        - תרגול
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+      moodle:
+        enabled: true
+        course_id: '999000004'
+        file_types:
+        - .pdf
+  calculus_2:
+    name: חשבון דיפרנציאלי ואינטגרלי 2ב
+    course_code: '03661122'
+    board_reading: true
+    notebook_offset: 10
+    weekly_schedule:
+      max_lectures: 2
+      max_tutorials: 1
+    sources:
+      panopto:
+        enabled: true
+        folder_id: 00000000-0000-4000-8000-000000000001
+        search_query: חשבון דיפרנציאלי 2
+        lecture_keywords:
+        - מרצה_א1
+        - מרצה_כ
+        - lecturer_l
+        tutorial_keywords:
+        - מרצה_י
+        - מרצה_ס
+        - lecturer_e
+        - lecturer_i
+        - תרגול 01
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - בן
+        - ראובני
+        - ראובן
+      moodle:
+        enabled: true
+        course_id: '999000005'
+        file_types:
+        - .pdf
+  intro_to_cs:
+    name: מבוא מורחב למדמ"ח
+    course_code: 03681105
+    weekly_schedule:
+      max_lectures: 2
+      max_tutorials: 1
+    sources:
+      panopto:
+        enabled: true
+        folder_id: 00000000-0000-4000-8000-000000000019
+        search_query: מבוא מורחב
+        lecture_keywords:
+        - מרצה_ד
+        - מרצה_ג
+        - lecturer_b
+        - lecturer_d
+        tutorial_keywords:
+        - תרגול 10
+        - מרצה_ש
+        - lecturer_p
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        fallback_tutorial_keywords:
+        - תרגול
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+      moodle:
+        enabled: true
+        course_id: '999000006'
+        file_types:
+        - .pdf
+        - .py
+        - .ipynb
+      wikidot:
+        enabled: true
+        lectures_url: http://tau-cs1001-py.wikidot.com/lecture-presentations
+        recitations_url: http://tau-cs1001-py.wikidot.com/recitation-logs
+  probability:
+    name: הסתברות וסטטיסטיקה
+    course_code: 03682002
+    board_reading: true
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    my_sessions:
+    - type: lecture
+      day: tue
+      start: '11:00'
+      end: '14:00'
+      group: '02'
+      location: בניין לדוגמה 101
+    - type: tutorial
+      day: thu
+      start: '14:00'
+      end: '15:00'
+      group: '03'
+      location: בניין לדוגמה 102
+    sources:
+      panopto:
+        enabled: true
+        folder_id: TO_BE_FILLED
+        search_query: הסתברות וסטטיסטיקה
+        match_by_schedule: true
+        lecture_keywords: []
+        tutorial_keywords: []
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        - שיעור
+        fallback_tutorial_keywords:
+        - תרגיל
+        - תרגול
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: TO_BE_FILLED
+        file_types:
+        - .pdf
+  software_1:
+    name: תוכנה 1
+    course_code: 03682157
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    my_sessions:
+    - type: lecture
+      day: mon
+      start: 08:00
+      end: '11:00'
+      group: '04'
+      location: בניין לדוגמה 103
+    - type: tutorial
+      day: wed
+      start: '11:00'
+      end: '12:00'
+      group: '05'
+      location: בניין לדוגמה 104
+    sources:
+      panopto:
+        enabled: true
+        folder_id: TO_BE_FILLED
+        search_query: תוכנה 1
+        match_by_schedule: true
+        lecture_keywords: []
+        tutorial_keywords: []
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        - שיעור
+        fallback_tutorial_keywords:
+        - תרגיל
+        - תרגול
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: TO_BE_FILLED
+        file_types:
+        - .pdf
+        - .java
+        - .zip
+  microeconomics_2:
+    name: מיקרו כלכלה ב׳
+    course_code: '10112109'
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    my_sessions:
+    - type: lecture
+      day: sun
+      start: '14:00'
+      end: '17:00'
+      group: '06'
+      location: בניין לדוגמה 105
+    - type: tutorial
+      day: tue
+      start: 08:00
+      end: 09:00
+      group: '07'
+      location: בניין לדוגמה 106
+    sources:
+      panopto:
+        enabled: true
+        folder_id: TO_BE_FILLED
+        search_query: מיקרו כלכלה
+        match_by_schedule: true
+        lecture_keywords: []
+        tutorial_keywords: []
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        - שיעור
+        fallback_tutorial_keywords:
+        - תרגיל
+        - תרגול
+        - פתרון
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: TO_BE_FILLED
+        file_types:
+        - .pdf
+  macroeconomics:
+    name: מאקרו כלכלה
+    course_code: '10112101'
+    weekly_schedule:
+      max_lectures: 1
+      max_tutorials: 1
+    my_sessions:
+    - type: lecture
+      day: thu
+      start: '11:00'
+      end: '14:00'
+      group: 08
+      location: בניין לדוגמה 107
+    - type: tutorial
+      day: mon
+      start: '14:00'
+      end: '15:00'
+      group: 09
+      location: בניין לדוגמה 108
+    sources:
+      panopto:
+        enabled: true
+        folder_id: TO_BE_FILLED
+        search_query: מאקרו כלכלה
+        match_by_schedule: true
+        other_group_hosts:
+        - lecturer_a
+        - lecturer_c
+        lecture_keywords: []
+        tutorial_keywords: []
+        fallback_lecture_keywords:
+        - הרצאה
+        - lecture
+        - שיעור
+        fallback_tutorial_keywords:
+        - תרגיל
+        - תרגול
+        - פתרון
+        collect_tutorials: true
+        exclude_keywords:
+        - שעת קבלה
+        - office hours
+      moodle:
+        enabled: true
+        course_id: TO_BE_FILLED
+        file_types:
+        - .pdf
+settings:
+  panopto:
+    base_url: https://tau.cloud.panopto.eu
+    upload_delay_days: 1
+  moodle:
+    base_url: https://moodle.tau.ac.il
+  schedule:
+    days_back: 7
+    run_time: 08:00
+    timezone: Asia/Jerusalem
+    semester_start: '2026-10-17'
+    semester_end: '2027-01-18'
+    no_class_dates:
+    - '2026-10-27'
+    max_send_age_days: 14
+  ai:
+    provider: gemini
+    model: gemini-3.1-pro-preview
+    max_tokens: 8000
+    temperature: 0.3
+  email:
+    recipient: you@example.com
+    subject_template: סיכום {course_name} - {date}
+    attach_pdf: false

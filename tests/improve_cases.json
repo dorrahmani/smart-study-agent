@@ -1,0 +1,8 @@
+{
+ "about": "Regression cases the self-improvement loop adds with its fixes (agent/improve.py). Data, add-only: a deploy that removes or changes a case is refused. Run by test_improve_cases_all_hold_14_11.",
+ "cases": [
+  {"id": "timetable-short-course-name", "module": "agent.timetable", "fn": "short",
+   "args": ["מאקרו כלכלה: צמיחה כלכלית, מחזורי עסקים"], "expect": {"equals": "מאקרו כלכלה"},
+   "why": "seed case: the shape every case of the loop follows"}
+ ]
+}

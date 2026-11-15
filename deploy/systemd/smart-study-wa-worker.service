@@ -1,0 +1,23 @@
+# WhatsApp agent worker — NOT internet-facing; reads the receiver's spool and replies via the Cloud API.
+# NOT installed yet (SETUP.md). Exits cleanly (and stays stopped) while WA_* creds are missing.
+[Unit]
+Description=Smart Study WhatsApp agent worker
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/smart_study_agent
+ExecStart=/home/ubuntu/smart_study_agent/venv/bin/python -m whatsapp.worker
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONIOENCODING=utf-8
+Environment=TZ=Asia/Jerusalem
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:/home/ubuntu/smart_study_agent/logs/wa_worker.log
+StandardError=append:/home/ubuntu/smart_study_agent/logs/wa_worker.log
+
+[Install]
+WantedBy=multi-user.target

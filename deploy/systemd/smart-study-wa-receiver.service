@@ -1,0 +1,41 @@
+# WhatsApp webhook receiver — the only internet-facing process (via Tailscale Funnel :8443 → 127.0.0.1:8090).
+# NOT installed yet: needs the owner's go-ahead for Funnel + Meta app credentials (SETUP.md).
+# Sandbox: the process sees only its own code, the venv and the spool dir. /home is an empty tmpfs
+# otherwise, so .env, API keys, tokens and data are not even visible to it.
+# Its env file holds only WA_APP_SECRET, WA_VERIFY_TOKEN, WA_OWNER, WA_SPOOL_DIR (chmod 600).
+[Unit]
+Description=Smart Study WhatsApp webhook receiver (sandboxed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/smart_study_agent
+EnvironmentFile=/home/ubuntu/smart_study_agent/config/wa_receiver.env
+ExecStart=/home/ubuntu/smart_study_agent/venv/bin/python -m uvicorn whatsapp.receiver:app --host 127.0.0.1 --port 8090 --no-server-header --no-access-log
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONIOENCODING=utf-8
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ubuntu/smart_study_agent/whatsapp
+BindReadOnlyPaths=/home/ubuntu/smart_study_agent/venv
+BindReadOnlyPaths=/home/ubuntu/smart_study_agent/venv312
+BindPaths=/home/ubuntu/smart_study_agent/data/wa_spool
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,40 @@
+# Web Scraping & Automation
+playwright==1.40.0
+selenium==4.16.0
+beautifulsoup4==4.12.2
+requests==2.31.0
+
+# PDF Processing
+pypdf>=5  # replaces PyPDF2 (unmaintained; PYSEC-2026-1835)
+pdfplumber==0.10.3
+pymupdf==1.26.5  # fitz: page count + OCR of scanned PDFs (summarizer, homework checker) — was never installed on the VM (23/10)
+pdf2image==1.16.3
+pillow>=12.3.0
+
+# AI & NLP
+anthropic==0.7.8
+openai==1.6.1  # fallback option
+
+# Email
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.111.0
+
+# Data Processing
+pyyaml==6.0.1
+python-dotenv==1.0.0
+pandas==2.1.4
+
+# Document Generation
+markdown==3.5.1
+weasyprint>=70.0  # Markdown -> PDF
+reportlab==4.0.7
+
+# Utils
+tqdm==4.66.1
+python-dateutil==2.8.2
+
+# accurate Asia/Jerusalem DST for schedule matching (panopto_collector._to_israel_local)
+tzdata
+notebooklm-py>=0.7.3  # 0.3.x broke when NotebookLM moved to notebook.google.com

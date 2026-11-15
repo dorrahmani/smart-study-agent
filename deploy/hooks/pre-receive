@@ -1,0 +1,28 @@
+#!/bin/bash
+# Deploy GATE — installed at ~/smart_study_agent.git/hooks/pre-receive on the VM.
+# Runs tests/test_safety_critical.py against the PUSHED commit, in a throwaway
+# copy, BEFORE the ref moves. Failing tests reject the push: the live tree,
+# cron and the dashboard are never touched. (post-receive can't do this — by
+# then the code is already live.)
+WORK=/home/ubuntu/smart_study_agent
+LOG=$WORK/logs/deploy.log
+ZERO=0000000000000000000000000000000000000000
+while read -r oldrev newrev ref; do
+  [ "$ref" = "refs/heads/main" ] || continue
+  [ "$newrev" = "$ZERO" ] && { echo "  ❌ refusing to delete main"; exit 1; }
+  TMP=$(mktemp -d /tmp/deploy_gate_XXXXXX)
+  git archive "$newrev" | tar -x -C "$TMP"
+  if (cd "$TMP" && PYTHONIOENCODING=utf-8 timeout 300 \
+        "$WORK/venv/bin/python3" -m tests.test_safety_critical) > "$TMP.out" 2>&1; then
+    echo "  ✅ safety tests passed ($(tail -1 "$TMP.out")) — deploying ${newrev:0:7}"
+    rm -rf "$TMP" "$TMP.out"
+  else
+    grep -E "❌|Error|assert" "$TMP.out" | head -20
+    tail -3 "$TMP.out"
+    echo "  ❌ SAFETY TESTS FAILED — push rejected, production untouched."
+    echo "$(date -Is) REJECTED ${newrev:0:7} (safety tests failed)" >> "$LOG"
+    rm -rf "$TMP" "$TMP.out"
+    exit 1
+  fi
+done
+exit 0

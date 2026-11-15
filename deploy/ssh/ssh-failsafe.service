@@ -1,0 +1,11 @@
+[Unit]
+Description=Reopen SSH publicly if Tailscale is down 5 min after boot
+After=network-online.target tailscaled.service ufw.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ssh-failsafe.sh
+
+[Install]
+WantedBy=multi-user.target

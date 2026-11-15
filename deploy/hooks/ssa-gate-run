@@ -1,0 +1,28 @@
+#!/bin/bash
+# The deploy gate's tests, run as the sudo-less user `ssa-gate` inside bwrap. Installed to /usr/local/bin/ssa-gate-run
+# (root:root 755); deploy/hooks/README.md has the steps. No /home, no network, an empty environment.
+#   ssa-gate-run /tmp/deploy_gate_XXXXXX
+# Why: the tests are code from the pushed commit. As ubuntu (sudo, .env, keys) a push runs them with all of that.
+set -eu
+DIR="${1:-}"
+case "$DIR" in
+    /tmp/deploy_gate_*) ;;
+    *) echo "ssa-gate-run: not a gate folder"; exit 2 ;;
+esac
+case "$DIR" in *..*) echo "ssa-gate-run: not a gate folder"; exit 2 ;; esac
+[ -d "$DIR" ] && [ ! -L "$DIR" ] || { echo "ssa-gate-run: no such folder"; exit 2; }
+cd /
+RC=0
+timeout 300 bwrap \
+    --ro-bind /usr /usr --ro-bind /etc /etc \
+    --symlink usr/lib /lib --symlink usr/lib64 /lib64 --symlink usr/bin /bin --symlink usr/sbin /sbin \
+    --proc /proc --dev /dev --tmpfs /tmp --tmpfs /gate \
+    --ro-bind /opt/ssa-gate/venv /gate/venv \
+    --bind "$DIR" /gate/work --chdir /gate/work \
+    --unshare-all --die-with-parent --new-session --clearenv \
+    --setenv PATH /gate/venv/bin:/usr/bin:/bin --setenv HOME /tmp --setenv LANG C.UTF-8 --setenv TZ Asia/Jerusalem \
+    --setenv PYTHONIOENCODING utf-8 --setenv PYTHONDONTWRITEBYTECODE 1 \
+    /gate/venv/bin/python3 -m tests.test_safety_critical || RC=$?
+# 11/11: what the tests wrote belongs to ssa-gate; open it up so the hook (ubuntu) can remove the folder afterwards
+chmod -R a+rwX "$DIR" 2>/dev/null || true
+exit $RC

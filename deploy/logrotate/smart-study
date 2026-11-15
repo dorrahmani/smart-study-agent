@@ -1,0 +1,49 @@
+# Installed at /etc/logrotate.d/smart-study on the VM (source of truth: this file).
+#   sudo install -m 644 deploy/logrotate/smart-study /etc/logrotate.d/smart-study
+# `su ubuntu ubuntu` is required: the files live in dirs owned by ubuntu, and
+# logrotate refuses to rotate there as root without it (that, plus the same file
+# listed in a second config, made logrotate.service fail every night until 09/2026).
+
+# daily_full_log.txt is REWRITTEN by every pipeline run, so rotating it daily is
+# what keeps each evening's log (14 days of history).
+/home/ubuntu/smart_study_agent/data/daily_full_log.txt
+/home/ubuntu/smart_study_agent/logs/*.log
+{
+    su ubuntu ubuntu
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    dateext
+    dateformat -%Y-%m-%d
+}
+
+# cron job logs (/tmp is also cleared on reboot)
+/tmp/anti_idle.log
+/tmp/backup.log
+/tmp/backup_verify.log
+/tmp/budget_check.log
+/tmp/cron_health.log
+/tmp/exam_mode.log
+/tmp/external_uptime.log
+/tmp/flashcards.log
+/tmp/memory_watchdog.log
+/tmp/morning_briefing.log
+/tmp/night_summary.log
+/tmp/nlm_nightly.log
+/tmp/oauth_health.log
+/tmp/primer.log
+/tmp/weekly_summary.log
+{
+    su ubuntu ubuntu
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

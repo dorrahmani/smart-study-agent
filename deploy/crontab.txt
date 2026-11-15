@@ -1,0 +1,68 @@
+# Captured from the VM (`crontab -l`) — source of truth for rebuilding it; times are UTC.
+# 03/11: jobs that read the wall clock (lessons, quiet hours, 'today') run with TZ=Asia/Jerusalem; the schedule itself stays UTC.
+# After editing: review, then on the VM  `crontab deploy/crontab.txt`.
+
+# Anti-idle: every 2 hours, 10-second CPU burst to prevent Oracle VM reclaim
+# Backup verification: Saturday 09:00 Israel = 06:00 UTC
+# Budget check: daily 13:00 UTC = 16:00 Israel
+# Daily backup to Google Drive: 04:00 UTC = 07:00 Israel
+# Daily pipeline: 06:00 UTC = 09:00 Israel time (morning, after overnight classes)
+# Daily pipeline: 15:00 UTC = 18:00 Israel time (evening, after day classes)
+# Exam mode detector: 04:50 UTC, before morning briefing
+# External uptime: every min
+# Flashcards: 16:00 Israel = 13:00 UTC, Sun-Thu
+# Memory watchdog: every 5 min
+# Morning briefing: 05:00 UTC = 08:00 Israel, Sun-Thu
+# Night summary: 20:00 UTC = 23:00 Israel daily
+# NotebookLM nightly artifacts: 02:00 UTC (only runs if exam_mode active)
+# OAuth health check: Sunday 09:00 Israel = 06:00 UTC
+# Smart Study Agent — Oracle Cloud VM
+# Times are in UTC (Israel = UTC+3 in summer). Agent jobs get TZ=Asia/Jerusalem for their clock (schedule stays UTC).
+# Weekly summary: Friday 18:00 Israel = 15:00 UTC
+# Agent daily review by Claude (first weeks): 03:00 UTC = 06:00 Israel (report after quiet hours)
+# Deadline watch (submission-aware homework reminders): every 2h, 04-20 UTC = 07-23 Israel
+# Weekly practice set: Thursday 19:00 Israel = 16:00 UTC
+# Study focus (what to study this weekend): Friday 10:00 Israel = 07:00 UTC
+# OFF-10-11 telegram deleted: * * * * * /home/ubuntu/smart_study_agent/venv/bin/python3 /home/ubuntu/smart_study_agent/scripts/external_uptime_telegram.py >> /tmp/external_uptime.log 2>&1
+# 10/11: its cron heartbeat + the morning briefing's missed-run check moved here (WhatsApp, not wrapped on purpose)
+*/15 * * * * /home/ubuntu/smart_study_agent/venv/bin/python3 /home/ubuntu/smart_study_agent/scripts/cron_heartbeat.py >> /tmp/cron_heartbeat.log 2>&1
+*/5 * * * * /home/ubuntu/smart_study_agent/scripts/memory_watchdog.sh >> /tmp/memory_watchdog.log 2>&1
+0 */2 * * * /home/ubuntu/smart_study_agent/scripts/anti_idle.sh >> /tmp/anti_idle.log 2>&1
+0 13 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Budget Check" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/budget_check.py" >> /tmp/budget_check.log 2>&1
+# OFF-05-11 (The owner: review questions only on request) 0 13 * * 0-4 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Flashcards Daily" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/flashcards_daily.py" >> /tmp/flashcards.log 2>&1
+0 19 * * * /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Daily Pipeline" /home/ubuntu/smart_study_agent/scripts/run_daily.sh
+0 15 * * 5 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Weekly Summary" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/weekly_summary.py" >> /tmp/weekly_summary.log 2>&1
+# OFF-05-11 (The owner: review questions only on request) 0 16 * * 4 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Practice Weekly" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/practice_weekly.py" >> /tmp/practice_weekly.log 2>&1
+# OFF-05-11 (The owner: review questions only on request) 0 7 * * 5 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Study Focus" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/study_focus_weekly.py" >> /tmp/study_focus.log 2>&1
+0 2 * * * /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "NLM Artifacts" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/nlm_artifacts_nightly.py" >> /tmp/nlm_nightly.log 2>&1
+# OFF-10-11 (Telegram-only digest, retired; WhatsApp has its own morning message) 0 20 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Night Summary" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/night_summary.py" >> /tmp/night_summary.log 2>&1
+0 4 * * * /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Drive Backup" /home/ubuntu/smart_study_agent/scripts/backup_to_drive.sh >> /tmp/backup.log 2>&1
+# OFF-10-11 (Telegram-only digest, retired; WhatsApp has its own morning message) 0 5 * * 0-4 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Morning Briefing" bash -c "cd /home/ubuntu/smart_study_agent && /home/ubuntu/smart_study_agent/venv/bin/python3 scripts/morning_briefing.py" >> /tmp/morning_briefing.log 2>&1
+0 6 * * 0 /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "OAuth Health" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/oauth_health_check.py" >> /tmp/oauth_health.log 2>&1
+0 6 * * 6 /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Backup Verify" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/verify_backup.py" >> /tmp/backup_verify.log 2>&1
+50 4 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Exam Mode" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/exam_mode_detector.py" >> /tmp/exam_mode.log 2>&1
+*/30 4-15 * * 0-4 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Pre-Lecture Primer" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/pre_lecture_primer.py" >> /tmp/primer.log 2>&1
+# Phase 0 (friends plan): daily probe of how long a Panopto cookie lives; stops itself when done
+30 6 * * * /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Cookie Probe" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/panopto_cookie_probe.py" >> /tmp/cookie_probe.log 2>&1
+# Pre-semester dress rehearsal (Fri 16.10.2026 10:00 IL): one past lecture end-to-end, owner-only email + WhatsApp report
+0 7 16 10 * [ "$(date +\%Y)" = 2026 ] && /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Dress Rehearsal" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/dress_rehearsal.py --course microeconomics" >> /tmp/dress_rehearsal.log 2>&1
+0 4-20/2 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Deadline Watch" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/deadline_watch.py" >> /tmp/deadline_watch.log 2>&1
+0 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Agent Review" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/agent_daily_review.py" >> /tmp/agent_review.log 2>&1
+# University watcher (no LLM): schedule cache before 07:00/10:00/20:00 IL ticks; grades 3x/day → WhatsApp (07/10/26)
+45 3,6,16 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "TAU Calendar" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/tau_watch.py calendar" >> /home/ubuntu/smart_study_agent/logs/tau_watch.log 2>&1
+30 6,11,17 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "TAU Grades" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/tau_watch.py grades" >> /home/ubuntu/smart_study_agent/logs/tau_watch.log 2>&1
+# University mailbox (read-only) → triage queue for the WhatsApp agent (08/10/26); no-op until config/tau_mail_token.json exists
+*/15 * * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "TAU Mail" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/tau_mail_watch.py" >> /home/ubuntu/smart_study_agent/logs/tau_mail.log 2>&1
+# Moodle announcements → triage queue → WhatsApp (10/10/26); 08:15/13:15/19:15 IL
+15 5,10,16 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Moodle Announcements" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/moodle_announce_watch.py" >> /home/ubuntu/smart_study_agent/logs/moodle_announce.log 2>&1
+# One brain (15/10/26): vault 🧠 המוח notes → the brain notebook in NotebookLM; 04:40 IL
+40 1 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Brain Sync" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/brain_sync.py" >> /home/ubuntu/smart_study_agent/logs/brain_sync.log 2>&1
+# Lecturer site updated → rebuild that lecture's unified summary (18/10/26); 12:00 / 23:00 IL
+0 9,20 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Lecturer Rebuild" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/lecturer_rebuild.py" >> /home/ubuntu/smart_study_agent/logs/lecturer_rebuild.log 2>&1
+# NotebookLM keepalive (14/11/26): the library's own advice is `auth refresh` every 15–20 min, or the idle server
+# login stales out in 1–3 days. Alerts the owner once a day, from the first dead run (not wrapped on purpose: it is the alert)
+*/20 * * * * cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/nlm_keepalive.py >> /home/ubuntu/smart_study_agent/logs/nlm_keepalive.log 2>&1
+# Moodle light check (15/11/26, NOT INSTALLED YET — the owner installs): new quizzes/assignments → obligations store within
+# hours; Sun–Thu 08:40/12:40/16:40 IL (06:40/10:40/14:40 UTC). One state read per course page, no LLM, backs off on
+# errors, never alerts (not wrapped on purpose). To enable: remove the leading "# " below, then `crontab deploy/crontab.txt`.
+# 40 6,10,14 * * 0-4 TZ=Asia/Jerusalem bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 timeout 600 venv/bin/python3 scripts/moodle_light_check.py" >> /home/ubuntu/smart_study_agent/logs/moodle_light_check.log 2>&1

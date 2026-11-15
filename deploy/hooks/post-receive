@@ -1,0 +1,28 @@
+#!/bin/bash
+# Deploy on push:  git push vm   (remote.vm.push maps master -> main)
+# Installed at ~/smart_study_agent.git/hooks/post-receive on the VM.
+# pre-receive already ran the safety tests on this exact commit.
+# Writes ONLY tracked files into the live tree. Ignored/untracked paths
+# (data/, .env, logs/, backups/, venv/) are never touched.
+WORK=/home/ubuntu/smart_study_agent
+GIT=/home/ubuntu/smart_study_agent.git
+LOG=$WORK/logs/deploy.log
+while read -r oldrev newrev ref; do
+  [ "$ref" = "refs/heads/main" ] || continue
+  echo "$(date -Is) deploy ${oldrev:0:7} -> ${newrev:0:7}" >> "$LOG"
+  git --git-dir="$GIT" --work-tree="$WORK" checkout -f main 2>>"$LOG"
+  # smoke test in the real environment (venv + .env): entry points still import
+  if ! (cd "$WORK" && venv/bin/python3 -c "import main, collectors.panopto_collector, generators.summarizer, utils.notify, agent.core, whatsapp.worker" >/dev/null 2>>"$LOG"); then
+    echo "  ❌ SMOKE TEST FAILED — see $LOG. Roll back: git revert <sha> && git push vm" | tee -a "$LOG"
+    exit 1
+  fi
+  # long-running services load code once at start — restart so they run the new version
+  # (06/10/26: the WhatsApp worker was missing here — agent changes deployed but never ran until a manual restart)
+  # (10/11/26: smart-study-bot.service (Telegram) removed — the bot is deleted; a restart would start a disabled unit)
+  sudo systemctl restart dashboard.service smart-study-wa-worker.service 2>>"$LOG" || true
+  # the bridge holds the WhatsApp session — restart it only when its own code changed (a restart = a short reconnect)
+  if git --git-dir="$GIT" diff --name-only "$oldrev" "$newrev" 2>/dev/null | grep -q '^whatsapp/bridge.py$'; then
+    sudo systemctl restart smart-study-wa-bridge.service 2>>"$LOG" || true
+  fi
+  echo "  ✅ deployed ${newrev:0:7}, smoke test passed" | tee -a "$LOG"
+done

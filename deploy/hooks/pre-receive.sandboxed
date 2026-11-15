@@ -1,0 +1,26 @@
+#!/bin/bash
+# Deploy GATE, sandboxed version. NOT installed yet: it needs the server steps in deploy/hooks/README.md, and it fails
+# closed without them (no ssa-gate user or runner = no deploy). Once installed it replaces hooks/pre-receive on the VM.
+# Same gate as pre-receive, except the tests never run as ubuntu: as the sudo-less `ssa-gate`, inside bwrap.
+WORK=/home/ubuntu/smart_study_agent
+LOG=$WORK/logs/deploy.log
+ZERO=0000000000000000000000000000000000000000
+while read -r oldrev newrev ref; do
+  [ "$ref" = "refs/heads/main" ] || continue
+  [ "$newrev" = "$ZERO" ] && { echo "  ❌ refusing to delete main"; exit 1; }
+  TMP=$(mktemp -d /tmp/deploy_gate_XXXXXX)
+  git archive "$newrev" | tar -x -C "$TMP"
+  chmod -R a+rwX "$TMP"                # the commit's own files, for the other user; nothing else is in there
+  if sudo -n -u ssa-gate /usr/local/bin/ssa-gate-run "$TMP" > "$TMP.out" 2>&1; then
+    echo "  ✅ safety tests passed ($(tail -1 "$TMP.out")) — deploying ${newrev:0:7}"
+    rm -rf "$TMP" "$TMP.out"
+  else
+    grep -E "❌|Error|assert" "$TMP.out" | head -20
+    tail -3 "$TMP.out"
+    echo "  ❌ SAFETY TESTS FAILED — push rejected, production untouched."
+    echo "$(date -Is) REJECTED ${newrev:0:7} (safety tests failed)" >> "$LOG"
+    rm -rf "$TMP" "$TMP.out"
+    exit 1
+  fi
+done
+exit 0

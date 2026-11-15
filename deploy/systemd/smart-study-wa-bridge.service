@@ -1,0 +1,47 @@
+# WhatsApp linked-device bridge (neonize/whatsmeow) for the owner's dedicated bot number — outbound only, no port.
+# Unofficial library with full access to that number's WhatsApp → isolated hard: own venv (venv_wa),
+# sees only whatsapp/, venv_wa and its data dirs; /home is otherwise an empty tmpfs, so .env, API keys,
+# tokens and the rest of data/ do not exist for it. Env file: config/wa_bridge.env (600) holding only
+# WA_BOT_NUMBER, WA_ALLOWED, WA_PAIR_SECRET.
+[Unit]
+Description=Smart Study WhatsApp linked-device bridge (sandboxed)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/smart_study_agent
+EnvironmentFile=/home/ubuntu/smart_study_agent/config/wa_bridge.env
+ExecStart=/home/ubuntu/smart_study_agent/venv_wa/bin/python /home/ubuntu/smart_study_agent/whatsapp/bridge.py
+Restart=on-failure
+UMask=0077
+RestartSec=20
+Environment=PYTHONIOENCODING=utf-8
+Environment=TZ=Asia/Jerusalem
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=WA_DATA_DIR=/home/ubuntu/smart_study_agent/data
+
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/ubuntu/smart_study_agent/whatsapp
+BindReadOnlyPaths=/home/ubuntu/smart_study_agent/venv_wa
+BindPaths=/home/ubuntu/smart_study_agent/data/wa_bridge
+BindPaths=/home/ubuntu/smart_study_agent/data/wa_spool
+BindPaths=/home/ubuntu/smart_study_agent/data/wa_outbox
+BindPaths=/home/ubuntu/smart_study_agent/data/wa_media
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryMax=512M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target
