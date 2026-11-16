@@ -5,7 +5,7 @@ utils/gemini_sub.py — Gemini calls on the owner's Google AI Pro subscription i
 The bot's text calls went through the Gemini CLI.
 03/11/2026: Google closed the Gemini CLI to personal accounts ("migrate to the Antigravity suite"), so every call had
 quietly fallen back to the API. The owner: "אני רוצה להשתמש בחשבון פרו שיש לי". The backend is now the Antigravity CLI
-(`agy`, signed in once as gemini.ai.pro423). It runs as the isolated `geminiagent` user, which has no sudo, can't read
+(`agy`, signed in once with the dedicated Google account). It runs as the isolated `geminiagent` user, which has no sudo, can't read
 the project or .env, and can't reach localhost or the tailnet (deploy/claude_agent/claudeagent-firewall.sh). It runs
 in plan mode in an empty folder, through /usr/local/bin/ssa-run-agy (deploy/gemini_agent/run_agy.sh). Plan mode is agy's
 own promise and nobody has proven it holds, so agy counts as an agent that can act: what contains it is that user and

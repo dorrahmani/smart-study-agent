@@ -2282,7 +2282,7 @@ def _booking_button(msg: 'In', u: dict, p: str) -> list['Out']:
     me = u.get('me') or {}
     if not me.get('phone'):
         u['book_me'] = pid
-        return [Out('text', '📲 על איזה שם ומספר להזמין? (למשל: "המשתמש רחמאני 050-1234567" — אזכור לפעם הבאה)')]
+        return [Out('text', '📲 על איזה שם ומספר להזמין? (למשל: "ישראל ישראלי 050-1234567" — אזכור לפעם הבאה)')]
     u['book'].pop(pid, None)
     wa = contacts.normalize(info.get('whatsapp', ''))
     contacts.add(info['name'], wa)
@@ -2664,7 +2664,7 @@ def _web_direct(msg: In, u: dict, text: str) -> list[Out] | None:
 def _direct(msg: In, u: dict) -> list[Out] | None:
     """Requests with one obvious meaning, handled without the classifier (it mis-routed all of these)."""
     text = (msg.text or '').strip()
-    me = _booking_me(msg, u, text)                                 # "המשתמש רחמאני 050-…" for a pending booking
+    me = _booking_me(msg, u, text)                                 # "ישראל ישראלי 050-…" for a pending booking
     if me is not None:
         return me
     inv = _invite(msg, text)                                       # 03/11 "תוסיף את יוסי לבוט" → a one-time code to the owner

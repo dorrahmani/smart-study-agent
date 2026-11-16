@@ -176,7 +176,7 @@ def describe_reminder(rec: dict) -> str:
     return f"⏰ {rec['text']} — יום {WEEKDAY_HE[due.weekday()]} {due:%d/%m %H:%M}{rep}{nag}{imp}"
 
 
-# 04/11 "תזכיר לי לבטל מנוי preplay" → "באיזו שעה?", and the next morning "תזכיר לי" → "מה תרצה שאזכיר?": the request
+# 04/11 "תזכיר לי לבטל מנוי Netflix" → "באיזו שעה?", and the next morning "תזכיר לי" → "מה תרצה שאזכיר?": the request
 # was lost between the two. A secretary doesn't ask: she picks a sensible time and lets him move it with one tap.
 def default_when(now: datetime, when: str = '') -> datetime:
     """No hour given → that day at 09:00 (a date was given), else today 18:00 before 16:00, else tomorrow 09:00."""

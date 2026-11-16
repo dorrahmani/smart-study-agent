@@ -206,8 +206,8 @@ CASES = [
 
     # ── the secretary (11/11): a reminder is never lost to "באיזו שעה?", and he steers the initiative in words ──
     dict(id='reminder-without-an-hour-is-set-not-asked', cls='secretary', when='04/11 08:08', kind='secretary',
-         turns=[('תזכיר לי לבטל מנוי preplay', {})], parse={'text': 'לבטל מנוי preplay', 'when': '', 'question': 'באיזו שעה?'},
-         reply_has=['לבטל מנוי preplay', 'לשנות?'], reply_lacks=['באיזו שעה'], reminders=1,
+         turns=[('תזכיר לי לבטל מנוי Netflix', {})], parse={'text': 'לבטל מנוי Netflix', 'when': '', 'question': 'באיזו שעה?'},
+         reply_has=['לבטל מנוי Netflix', 'לשנות?'], reply_lacks=['באיזו שעה'], reminders=1,
          live='"🤔 באיזו שעה?" and the next morning "תזכיר לי" → "מה תרצה שאזכיר?": the request was lost'),
     dict(id='important-reminder-is-followed-up', cls='secretary', when='11/11', kind='secretary',
          turns=[('תזכיר לי מחר ב-6 לצאת לטיסה, חשוב', {})],
