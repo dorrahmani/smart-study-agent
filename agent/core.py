@@ -1003,10 +1003,22 @@ def _assistant(msg: 'In', u: dict, text: str, thought: dict | None = None) -> li
         return ([Out('text', reply)] if keep else []) + done
     if kind == 'feature' and (d.get('feature') or '').strip() and not msg.forwarded \
             and (FEATURE_ASK.search(text) or YES_RX.match(text) or _owner_asked(msg, text, d['feature'], 0.34)):
+        # 15/11 the job got one sentence and nothing it was about ("אין לי מספיק מידע"): his words + the fenced context
+        # (agent/feature_request), the whole of it shown here; a second request within minutes replaces the first
+        from agent import feature_request as fr
+        earlier = fr.pending_same(u)
+        title = d['feature'].strip()
+        task = fr.build(msg.sender, title if YES_RX.match(text) else text, list(u.get('history') or []),
+                        d.get('feature_related'), earlier)
         pid = secrets.token_hex(3)
-        u.setdefault('feat', {})[pid] = d['feature'].strip()
-        return [Out('buttons', f"{reply}\n\n🛠️ *בקשת שיפור:* {d['feature'].strip()}\n\nלהעביר לקלוד שיפתח את זה? "
-                               f"(שום דבר לא עולה לשרת בלי אישור שלך אחרי שהוא מסיים)",
+        u.setdefault('feat', {})[pid] = title
+        u.setdefault('feat_ctx', {})[pid] = {'task': task, 'text': text.strip()[:600]}
+        u.setdefault('feat_ts', {})[pid] = datetime.now().isoformat(timespec='seconds')
+        for k in ('feat_ctx', 'feat_ts'):                 # only live confirmations are kept
+            u[k] = {p: v for p, v in u[k].items() if p in u['feat']}
+        merged = '\n(מחליף את הבקשה הקודמת שלא נשלחה)' if earlier else ''
+        return [Out('buttons', f"{reply}\n\n🛠️ *בקשת שיפור* — זה מה שקלוד יקבל:{merged}\n\n{fr.shown(task)}\n\n"
+                               f"להעביר לקלוד שיפתח את זה? (שום דבר לא עולה לשרת בלי אישור שלך אחרי שהוא מסיים)",
                     buttons=[('✅ כן, שיפתח', f'ft:go:{pid}'), ('❌ לא עכשיו', f'ft:no:{pid}')])]
     if kind == 'fact' and (d.get('fact') or '').strip() and not _owner_asked(msg, text, d['fact']):
         kind = 'chat'                                    # nothing was written, so its "רשמתי" meets the claim guard below
@@ -1050,6 +1062,7 @@ DECLINE_LABEL = re.compile(r'^\s*(?:❌|🙏|🤷)')
 # …and only the silent ones: 'cal:no' of the partner's proposal tells her "המשתמש לא אישר", a coordination decline answers a
 # contact — words read by the model must never message anyone
 SILENT_DECLINE = ('ex:', 'ft:no:', 'em:no:', 'msg:no:', 'ce:no:', 'pp:no:', 'lf:no')
+OWN_DONE = ('rmd:done:', 'task:done:')                  # closing his own reminder / task: inward, like a decline
 
 
 def _silent_decline(u: dict, label: str, payload: str) -> bool:
@@ -1076,10 +1089,18 @@ def _answered_in_words(msg: 'In', u: dict, d: dict) -> list['Out']:
         o = shown[qn - 1]
         now = outbox.open_questions(msg.sender)          # still open? (expired / answered meanwhile → leave it)
         n = next((i for i, x in enumerate(now, 1) if x.get('ts') == o.get('ts') and x.get('payloads') == o.get('payloads')), 0)
-        if n and 1 <= on <= len(o['labels']) and _silent_decline(u, o['labels'][on - 1], o['payloads'][on - 1]):
+        pay = o['payloads'][on - 1] if n and 1 <= on <= len(o.get('payloads') or []) else ''
+        if pay.startswith(OWN_DONE) and not msg.group:
+            # 15/11 "ביטלתי את המלון" to "⏰ תזכורת: בטל את המלון… 1️⃣ ✅ בוצע": his own item, closed on his own report —
+            # nothing goes out, so words may do what the ✅ button does
+            from agent import open_items
+            kind, iid = ('reminder' if pay.startswith('rmd:') else 'task'), pay.split(':', 2)[2]
+            text_of = re.sub(r'^\s*⏰\s*\*?תזכורת:?\*?\s*|^\s*📌\s*', '', o.get('q') or o.get('text') or '').strip('* ')
+            out.append(Out('text', open_items.close(msg.sender, {'kind': kind, 'id': iid, 'text': text_of, 'raised': True})))
+        elif pay and _silent_decline(u, o['labels'][on - 1], pay):
             outbox.close_open(msg.sender, n)
             before = dict(u.get('exam_skip') or {})
-            out += _button(In(msg.sender, 'button', payload=o['payloads'][on - 1], channel=msg.channel, role=msg.role), u)
+            out += _button(In(msg.sender, 'button', payload=pay, channel=msg.channel, role=msg.role), u)
             closed_exam_q = (u.get('exam_skip') or {}) != before    # that button already recorded the exam decision
     ex = d.get('exam_decision') if isinstance(d.get('exam_decision'), dict) else {}
     # 03/11 review: closing an exam question already recorded THAT exam; marking again would hit the next sitting
@@ -1149,13 +1170,20 @@ def _exam_place_offer(u: dict, course: str, place: str) -> 'Out | None':
 def _feature_button(msg: 'In', u: dict, p: str) -> list['Out']:
     _, op, pid = (p.split(':', 2) + ['', ''])[:3]
     feat = (u.get('feat') or {}).pop(pid, None)
+    ctx = (u.get('feat_ctx') or {}).pop(pid, None) or {}
+    (u.get('feat_ts') or {}).pop(pid, None)
     if not feat:
         return [Out('text', 'הבקשה כבר לא בתוקף.')]
     if op != 'go':
         return [Out('text', '👍 לא העברתי. אפשר תמיד לכתוב "קלוד: …".')]
-    from agent import claude_job
-    jid, reply = claude_job.start(msg.sender, f'בקשת שיפור מהמשתמש (מהוואטסאפ, {datetime.now():%d/%m %H:%M}): {feat}')
-    audit(msg.sender, 'claude_job_start', {'id': jid, 'task': feat[:300], 'via': 'assistant'})
+    from agent import claude_job, feature_request
+    task = ctx.get('task') or f'{feature_request.PREFIX} (מהוואטסאפ, {datetime.now():%d/%m %H:%M}): {feat}'
+    # 15/11 two jobs (1115130461e9, 1115131072ea) for one request six minutes apart: the newer one takes the older's place
+    gone = claude_job.replace_recent(msg.sender, feature_request.PREFIX, feature_request.SAME_MINUTES * 60)
+    if gone:
+        task += '\n\n(מחליף משימה קודמת באותו נושא שעוד לא הסתיימה: ' + ' · '.join(g[:120] for g in gone) + ')'
+    jid, reply = claude_job.start(msg.sender, task)
+    audit(msg.sender, 'claude_job_start', {'id': jid, 'task': feat[:300], 'via': 'assistant', 'replaced': len(gone)})
     from agent import now_note                                 # the assistant remembers it asked for this
     now_note.add(msg.sender, f'ביקש מקלוד: {feat[:150]}', 'request')
     return [Out('text', reply)]
@@ -1592,6 +1620,11 @@ def _plan_and_learn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
             return [Out('text', loops.verify(item))]
     if msg.role == 'owner' and not msg.forwarded and (done := _yes_closes(msg, u, text)) is not None:
         return [Out('text', done)]
+    if msg.role == 'owner' and not msg.forwarded and not msg.group:
+        from agent import open_items                     # 15/11 "ביטלתי את המלון" ×4 → "לא ביצעתי…": his own item closes
+        if (st := open_items.handle(msg.sender, text)) is not None:
+            audit(msg.sender, 'open_item', {'how': st[0], 'text': text[:120]})
+            return [Out(st[0], st[1], buttons=st[2] or None)] if st[0] == 'buttons' else [Out('text', st[1])]
     from agent import tasks                              # 02/11 "החזרתי את הספרים" closes that task
     if msg.role == 'owner' and not msg.forwarded and \
             (done := tasks.close_text(msg.sender, text, context=_closable_note(msg.sender))) is not None:
@@ -1955,6 +1988,95 @@ def _coord_draft(msg: 'In', u: dict, text: str) -> list['Out']:
                 buttons=[('✅ לשלוח', f'co:go:{tid}'), ('❌ לא', f'co:no:{tid}')])]
 
 
+# 15/11 13:15 a hotel's card, then "אני רוצה שתיצור איתם קשר ותבטל את המלון יש לך מספר הזמנה" → "אין לי אפשרות ליצור
+# איתם קשר… גם אין לי את מספר ההזמנה". The bot can write to a contact for him (one ✅ on the first message), and the
+# booking was in a PDF he sent on 10/11.
+REACH_RX = re.compile(r'(?<![א-ת])(?:(?:ש?תיצור|צור|ש?תצור|ליצור)\s+(?:איתם|איתו|איתה|עמם|קשר)|ש?תפנה\s+(?:אליהם|אליו)|'
+                      r'(?:ש?תכתוב|ש?תשלח(?:\s+הודעה)?|ש?תגיד)\s+(?:להם|לו)|ש?תבקש\s+(?:מהם|ממנו)|ש?תדבר\s+(?:איתם|איתו)|'
+                      r'(?:ש?תבטל|ש?תסגור)\s+(?:מולם|מולו|איתם|איתו))(?![א-ת])')
+REACH_MINUTES = 60
+REACH_FILL_RX = re.compile(r'\d{3,}|(?:מספר|שם|תאריך)\s+(?:ה)?(?:הזמנה|מלון)')
+
+
+def _reach(msg: 'In', u: dict, text: str) -> list['Out'] | None:
+    """"תיצור איתם קשר ו…" right after a contact card → a drafted WhatsApp message to that contact, with what he told us
+    before (facts, his files' summaries), for his ✅. Missing details → the exact ones are asked. Nothing is sent here."""
+    from agent import contacts, coordinator
+    if msg.role != 'owner' or msg.group or msg.forwarded or msg.kind != 'text':
+        return None
+    wait = u.get('reach_wait')
+    if wait and datetime.now() - datetime.fromisoformat(wait['ts']) < timedelta(minutes=30) and len(text) < 200 \
+            and '?' not in text and REACH_FILL_RX.search(text):
+        u.pop('reach_wait', None)                         # he wrote the missing detail
+        return _reach_draft(msg, u, wait['name'], f"{wait['text']}\n(המשתמש הוסיף: {text})")
+    last = u.get('last_contact') or {}
+    if not REACH_RX.search(text) or not last.get('name'):
+        return None
+    try:
+        if datetime.now() - datetime.fromisoformat(last['ts']) > timedelta(minutes=REACH_MINUTES):
+            return None
+    except (KeyError, ValueError):
+        return None
+    if not contacts.find(last['name']):
+        return None
+    return _reach_draft(msg, u, last['name'], text)
+
+
+def _reach_draft(msg: 'In', u: dict, name: str, text: str) -> list['Out']:
+    from agent import contacts, coordinator
+    from utils.gemini_sub import api_only
+    full, phone = contacts.find(name) or (name, '')
+    if not phone:
+        return [Out('text', f'📇 אין לי מספר של {name}. שלח לי שוב את איש הקשר.')]
+    details = _known_details(msg.sender, f'{text} {full}')
+    with api_only():                                      # his files' text is in the prompt: not for the subscription agent
+        p = coordinator.plan(f'שלח הודעה ל{full}: {text}', [full], details=details)
+    first = (p.get('first_message') or '').strip()
+    missing = (p.get('missing') or '').strip()
+    if missing or not first:
+        u['reach_wait'] = {'name': full, 'text': text, 'ts': datetime.now().isoformat(timespec='seconds')}
+        return [Out('text', f"✉️ אכין הודעה ל{full}, חסר לי רק: *{missing or 'מה לכתוב להם'}*. תכתוב לי את זה ואראה לך "
+                            f"את ההודעה לפני שליחה.")]
+    p['kind'] = 'message'
+    tid = coordinator.create(msg.sender, full, phone, p)
+    used = f"\n\n📎 לקחתי מ: {details['from']}" if details.get('from') else ''
+    return [Out('buttons', f"🤝 *{full}* ({phone[3:5]}…{phone[-3:]})\n\nההודעה (מהמספר של הבוט, בשמך):\n\"{first}\"{used}\n\n"
+                           f"אם יענו — אעביר לך את התשובה.\n\nלשלוח?",
+                buttons=[('✅ לשלוח', f'co:go:{tid}'), ('❌ לא', f'co:no:{tid}')])]
+
+
+def _known_details(chat: str, about: str, days: int = 45, path: Path | None = None) -> dict:
+    """What he told us before that this is about: his facts, and the summaries of files he sent (a booking PDF). Data for
+    the draft only: {'text': …, 'from': 'what it came from'}. Only his own, unforwarded rows."""
+    from agent import life, open_items
+    want = set().union(*open_items._words(about)) - open_items._GENERIC if open_items._words(about) else set()
+    if not want:
+        return {}
+    cut = (datetime.now() - timedelta(days=days)).isoformat()
+    rows = []
+    try:
+        for ln in (path or CONVO_LOG).read_text(encoding='utf-8').splitlines()[-3000:]:
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue
+            if r.get('role') != 'owner' or r.get('forwarded') or str(r.get('ts', '')) < cut or r.get('kind') != 'document':
+                continue
+            said = ' '.join(str(o[1]) for o in r.get('out') or [] if isinstance(o, (list, tuple)) and len(o) > 1)
+            score = len(want & set().union(*open_items._words(said))) if open_items._words(said) else 0
+            if score >= 2:
+                rows.append((score, r.get('ts', ''), said[:1500]))
+    except OSError:
+        pass
+    facts = [f for f in life.facts(chat) if open_items._words(f) and want & set().union(*open_items._words(f))][-5:]
+    best = sorted(rows, key=lambda x: (x[0], x[1]))[-2:]
+    if not best and not facts:
+        return {}
+    title = [re.sub(r'\*', '', s.split('\n')[0])[:80] for _, _, s in best]
+    return {'text': '\n\n'.join([s for _, _, s in best] + (['מה שהמשתמש סיפר: ' + '; '.join(facts)] if facts else [])),
+            'from': ', '.join(title + (['מה שסיפרת לי'] if facts else []))}
+
+
 def _coord_button(msg: 'In', u: dict, p: str) -> list['Out']:
     from agent import coordinator, contacts
     from whatsapp import outbox, bridge
@@ -1985,6 +2107,8 @@ def _coord_owner(msg: 'In', u: dict, text: str, st: dict) -> list['Out'] | None:
         u.pop('coord_wait')
         contacts.add(wait['name'], m.group(0))
         return _coord_draft(msg, u, wait['text'])
+    if (r := _reach(msg, u, text)) is not None:
+        return r
     if m := COORD_CANCEL.search(text):
         hit = coordinator.by_name(m.group(1))
         if hit:
@@ -2959,6 +3083,14 @@ def _follow_is_latest(fu: dict, chat: str) -> bool:
 
 def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
     text = (msg.text or '').strip()
+    if msg.kind in ('text', 'other') and not text and not msg.payload and not msg.media:
+        # 15/11 16:06 an edit of "חטפתי את המלון" (a protocol message: no text) got the whole help menu. Nothing to answer
+        return []
+    if msg.kind == 'contact' and not msg.text:
+        return [Out('text', '📇 קיבלתי איש קשר ריק, בלי שם או מספר.')]
+    if msg.kind == 'unsupported':
+        what = text if text in ('סרטון', 'מיקום', 'סקר') else 'את סוג ההודעה הזה'
+        return [Out('text', f'🙈 {what} אני עוד לא יודע לקרוא. אפשר לכתוב לי במילים מה צריך?')]
     # the assistant's one offered next step is for the very next message only — whatever handles that message
     fu = u.pop('follow_up', None)
     if isinstance(fu, dict) and fu.get('command') and msg.kind == 'text' and msg.role == 'owner' and not msg.forwarded \
@@ -3105,8 +3237,13 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
     if msg.kind == 'contact':                                # The owner shared a contact card
         from agent import contacts
         name, phone = contacts.from_vcard(*((msg.text or '') + '\n').split('\n', 1))
-        if not (name and contacts.add(name, phone)):
-            return [Out('text', '📇 לא הצלחתי לקרוא את איש הקשר.')]
+        if not name or not phone:
+            return [Out('text', '📇 לא מצאתי באיש הקשר מספר וואטסאפ שאפשר לכתוב אליו.' if name else
+                                '📇 לא הצלחתי לקרוא את איש הקשר.')]
+        if not contacts.add(name, phone):
+            return [Out('text', '📇 לא הצלחתי לשמור את איש הקשר.')]
+        # 15/11 "תיצור איתם קשר ותבטל את המלון" a minute after a card: "איתם" is this card (_reach)
+        u['last_contact'] = {'name': name, 'ts': datetime.now().isoformat(timespec='seconds')}
         wait = u.pop('coord_wait', None)
         if wait and (datetime.now() - datetime.fromisoformat(wait['ts'])).total_seconds() < 1800:
             contacts.add(wait['name'] or name, phone)
@@ -3241,7 +3378,19 @@ def _mind_on(msg: 'In') -> bool:
 def _mind_turn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
     """The agent loop's turn (agent/mind.py). None = not its message, or it failed: the classifier takes over."""
     from agent import mind
-    d = mind.think(text, msg.sender, u)
+    quoted = ''
+    if msg.reply_to and msg.role == 'owner' and msg.channel == 'whatsapp':
+        try:                                              # 15/11 "מה השינוי ?" on a quoted notification
+            from whatsapp import outbox
+            quoted = outbox.quoted_text(msg.sender, msg.reply_to)
+        except Exception as e:
+            print(f'  ⚠️ quoted message: {e!r}'[:160])
+    if quoted:
+        u['_quoted'] = quoted
+    try:
+        d = mind.think(text, msg.sender, u)
+    finally:
+        u.pop('_quoted', None)
     if d is None or d['kind'] == 'command':
         return None                                      # the router runs the owner's own words, never the model's
     if (d.get('_turn') or {}).get('tainted'):
@@ -3267,7 +3416,33 @@ def _mind_turn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
         except Exception as e:
             print(f'  ⚠️ the loop\'s action failed: {e!r}'[:300])
             outs.append(Out('text', '⚠️ את הפעולה לא הצלחתי לבצע. נסה שוב.'))
+    if d.get('clarify') or (not act and _repeats(u, outs, text)):
+        # 15/11: "ביטלתי את המלון" / "אני ביטלתי" / "זה סגור אני ביטלתי" got one refusal, word for word, three times.
+        # Asked again in other words → which of his open things it is, a button each; nothing to offer → the old path
+        from agent import open_items
+        try:
+            found = open_items.items(msg.sender)
+            c = open_items.clarify(msg.sender, sorted(found, key=lambda i: not i['raised']), text)
+        except Exception as e:
+            print(f'  ⚠️ clarify: {e!r}'[:200])
+            c = None
+        if c:
+            lead = '\n'.join(o.text for o in outs if o.kind == 'text' and o.text and o.text.strip() != mind.CLARIFY
+                             and not _repeats(u, [o], text)).strip()
+            return [Out('buttons', f'{lead}\n\n{c[0]}' if lead else c[0], buttons=c[1])]
+        if not d.get('clarify'):
+            return None
     return outs or None
+
+
+def _repeats(u: dict, outs: list, text: str) -> bool:
+    """This answer is, word for word, the bot's last one, and he wrote something else since: he wasn't understood."""
+    hist = u.get('history') or []
+    last_bot = next((h for h in reversed(hist) if h.get('role') == 'bot'), None)
+    last_user = next((h for h in reversed(hist) if h.get('role') == 'user'), None)
+    said = '\n'.join(o.text for o in outs if o.kind in ('text', 'buttons') and o.text).strip()
+    return bool(said and last_bot and last_user and said[:500].strip() == (last_bot.get('text') or '').strip()
+                and (last_user.get('text') or '').strip() != (text or '').strip())
 
 
 def _mind_action(msg: 'In', u: dict, kind: str, what: str) -> list['Out']:
@@ -3861,6 +4036,9 @@ def _button(msg: In, u: dict, st: dict | None = None) -> list[Out]:
         return [Out('text', '↩️ בוטל והוסר מהיומן: ' + ', '.join(undo['titles']))]
     if p.startswith('rm:'):
         return _set_reminders(msg, u, p)
+    if p.startswith('oi:'):                                  # 15/11 "על מה מדובר? [המלון בטבריה] [משהו אחר]"
+        from agent import open_items
+        return [Out('text', open_items.button(msg.sender, p))]
     if p.startswith('rmd:'):
         from agent import life
         _, op, rid = (p.split(':', 2) + ['', ''])[:3]

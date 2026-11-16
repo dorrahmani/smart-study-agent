@@ -272,7 +272,7 @@ class PanoptoCollector:
     @staticmethod
     def _wall(dt):
         """11/11: Panopto's /Date(ms)/ is ALREADY Israel wall-clock time (TAU's account timezone), not UTC — verified on
-        the live folders: "Recitation - Alon - 1600-1800" → 16:15, "Ilia 1200-1300" → 12:02, probability "תרגול 3 - שעה
+        the live folders: "Recitation - Omer - 1600-1800" → 16:15, "Igor 1200-1300" → 12:02, probability "תרגול 3 - שעה
         11" → 11:10, in summer and in winter time. Converting it again put every recording 2–3 hours late, so nothing
         matched the owner's slots and the other-group fallback took whatever was newest (probability's 13:00 tutorial
         instead of his 11:00 one)."""

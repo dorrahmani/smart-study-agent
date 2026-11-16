@@ -73,6 +73,16 @@ def _active() -> list[str]:
 SOLUTION_RX = re.compile(r'פתרון|solution', re.I)
 
 
+def _for_me(a: dict) -> bool:
+    """15/11 "הודעות שלא רלוונטיות אליי אל תשלח": an item whose title / section names another group, day or tutor
+    ("הגשה — קבוצה 16", "Quiz — Wednesday recitation") isn't his to owe. Only the rule (integrations/univ_relevance)."""
+    try:
+        from integrations import univ_relevance
+        return univ_relevance.for_me(a.get('course_key'), f"{a.get('title') or ''} {a.get('section') or ''}")
+    except Exception:
+        return True
+
+
 def collect(cache: Path | None = None, lecturer: Path | None = None, dl_state: dict | None = None,
             courses: list[str] | None = None) -> list[dict]:
     """Every quiz / assignment of this semester's courses, with its state now. A PDF exercise ('resource') only when it
@@ -94,6 +104,8 @@ def collect(cache: Path | None = None, lecturer: Path | None = None, dl_state: d
         if kind not in ('assign', 'quiz') and not (kind == 'resource' and a.get('due_date')):
             continue
         if SOLUTION_RX.search(a.get('title') or ''):
+            continue
+        if not _for_me(a):                                  # 15/11 another group's submission box / quiz
             continue
         oid = dl.key_of(a)
         if oid in seen:
@@ -844,6 +856,12 @@ def route(text: str, chat: str, course: str | None = None):
     t = (text or '').strip()
     if not t or len(t) > 80:
         return None
+    try:                                                   # 15/11 "מה סיננת?" — the university updates not sent to him
+        from integrations import univ_relevance
+        if univ_relevance.WHAT_RX.match(t):
+            return univ_relevance.filtered_text()
+    except ImportError:
+        pass
     if QUIZ_WORD_RX.search(t) and QUIZ_SHOW_RX.search(t) and not NOT_QUIZ_RX.search(t):
         return quizzes_text(course or 'software_1', wrong_only=bool(re.search(r'טעי', t)))
     m = SOLUTION_ASK_RX.search(t) or (SHEET_RX.search(t) if not re.search(r'תן לי|על\s', t) else None)

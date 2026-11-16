@@ -31,7 +31,7 @@ LATE_DAYS = 5
 DAYS_HE = ['שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'ראשון']
 SIBLING_DAYS = 7                      # two tasks from mails about one thing have due dates this close
 # 05/11 the verb anywhere in a short message ("אבל אמרתי לך שהחזרתי"), not only as its first word
-DONE_RX = re.compile(r'(?<![א-ת])ש?(?:החזרתי|שילמתי|עשיתי|סיימתי|סגרתי|מילאתי|נרשמתי|שלחתי|הבאתי|אספתי|הגשתי|טיפלתי|קניתי|'
+DONE_RX = re.compile(r'(?<![א-ת])ש?(?:ביטלתי|החזרתי|שילמתי|עשיתי|סיימתי|סגרתי|מילאתי|נרשמתי|שלחתי|הבאתי|אספתי|הגשתי|טיפלתי|קניתי|'
                      r'הזמנתי|חידשתי|האכלתי|בוצע|טופל|נעשה|סודר|סגור|הוחזרו?|שולם)(?![א-ת])')
 DROP_RX = re.compile(r'(?<![א-ת])(?:לא\s+רלוונטי|לא\s+רלבנטי|ירד\s+מהפרק|התבטל|בוטל|לא\s+צריך\s+יותר|כבר\s+לא\s+צריך|'
                      r'עזוב\s+את\s+זה|תוריד\s+את\s+זה)(?![א-ת])')
@@ -277,6 +277,9 @@ def action(chat: str, op: str, tid: str, now: datetime | None = None, cal=None, 
 def _said_done(text: str) -> tuple[str, re.Match] | None:
     """('done' | 'dropped', the words that said so), or None: a question, a request, "עוד לא החזרתי"."""
     if not text or len(text) > 120 or ASKING_RX.search(text):
+        return None
+    from agent.open_items import WAIT_RX                 # 15/11 "שלחתי להם מייל, מחכה לתשובה" is sent, not done
+    if WAIT_RX.search(text):
         return None
     for why, rx in (('dropped', DROP_RX), ('done', DONE_RX)):
         for m in rx.finditer(text):

@@ -101,6 +101,18 @@ def describe(p: dict) -> str:
         old = st.get('dateTime', st.get('date', ''))[:16].replace('T', ' ')
         new_day = p.get('date') or (st.get('dateTime') or st.get('date', ''))[:10]
         new_t = p.get('start') or (st.get('dateTime', '')[11:16] if 'dateTime' in st else '')
+        # 15/11 Software 1 moved its end only, and the ✅ read "12:00 → 12:00": a timed event shows start–end, as apply()
+        # will write it (end given, or the same length from the new start)
+        en = (ev.get('end') or {}).get('dateTime', '')
+        if 'dateTime' in st and en and new_t:
+            try:
+                s0, e0 = datetime.fromisoformat(st['dateTime']), datetime.fromisoformat(en)
+                h, m = map(int, new_t.split(':'))
+                new_end = p.get('end') or (datetime(2000, 1, 1, h, m) + (e0 - s0)).strftime('%H:%M')
+                old += f"–{e0:%H:%M}"
+                new_t += f'–{new_end}'
+            except ValueError:
+                pass
         lines.append(f"📅 {old}  →  *{(new_day + ' ' + new_t).strip()}*")
     return '\n'.join(lines)
 

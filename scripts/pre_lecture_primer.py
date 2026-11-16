@@ -321,6 +321,16 @@ def syllabus_entries(ck: str, index: dict | None = None) -> list[dict]:
     return [e for e in worthy_moodle_entries(idx) if SYLLABUS_RX.search(e['title'])][:1]
 
 
+def _for_my_group(ck: str, note: dict, body: str) -> bool:
+    """A Moodle note about another group (Sunday's tutorials merged, Wednesday's recitation cancelled) → not his."""
+    try:
+        from integrations import univ_relevance as ur
+        return ur.classify(ck, note.get('title', ''), body, ur.ref_date(note.get('date')))['rel'] != 'no'
+    except Exception as e:
+        print(f'  relevance failed ({ck}): {e!r}'[:200])
+        return True
+
+
 def recent_announcements(ck: str, today: date) -> list[str]:
     """The Moodle notes of the past 10 days. Macro's weekly mail says what the next lecture covers."""
     try:
@@ -334,6 +344,8 @@ def recent_announcements(ck: str, today: date) -> list[str]:
     for n in notes[:3]:
         if str(n.get('date', '')) >= cutoff:
             body = re.sub(r'^.*?\n---\s*\n', '', n.get('body') or '', count=1, flags=re.S).strip()
+            if not _for_my_group(ck, n, body):                 # 15/11 another group's note isn't quoted to him
+                continue
             out.append(f"הודעה במודל מ-{n.get('date')}, \"{n.get('title', '')}\": {body[:1500]}")
     return out
 

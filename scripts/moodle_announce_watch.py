@@ -33,8 +33,9 @@ def to_queue(items: list[dict], triager=None) -> list[dict]:
     mails = [{'id': f"moodle:{it.get('course_key')}:{it.get('date')}:{it.get('title', '')[:40]}", 'thread': '',
               'from': f"מודל · {COURSE_NAMES.get(it.get('course_key'), it.get('course_key', ''))}",
               'subject': it.get('title', ''), 'attachments': [], 'labels': [],
+              'course_key': it.get('course_key'), 'date': it.get('date'),      # 15/11 the relevance rule: whose group
               'text': f"(כתב/ה: {it.get('sender', '')})\n{it.get('body', '')}", 'snippet': ''} for it in items]
-    rows = (triager or tau_mail.triage)(mails)
+    rows = tau_mail.gate(mails, triager or tau_mail.triage, 'moodle')        # another group's post: not queued
     tau_mail.QUEUE.parent.mkdir(parents=True, exist_ok=True)
     with open(tau_mail.QUEUE, 'a', encoding='utf-8') as f:
         for r in rows:

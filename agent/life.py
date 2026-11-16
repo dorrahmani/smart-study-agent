@@ -176,6 +176,10 @@ def describe_reminder(rec: dict) -> str:
     return f"⏰ {rec['text']} — יום {WEEKDAY_HE[due.weekday()]} {due:%d/%m %H:%M}{rep}{nag}{imp}"
 
 
+NAG_RX = re.compile(r'(?<![א-ת])(?:תחפור|תנדנד|נודניק|תציק|אל\s+תרפה|תשב\s+עליי|עד\s+ש(?:אגיד|אעשה|אסמן|אאשר|אבטל|'
+                    r'אסיים|אטפל|זה\s+ייעשה|יבוטל))(?![א-ת])')
+
+
 # 04/11 "תזכיר לי לבטל מנוי Netflix" → "באיזו שעה?", and the next morning "תזכיר לי" → "מה תרצה שאזכיר?": the request
 # was lost between the two. A secretary doesn't ask: she picks a sensible time and lets him move it with one tap.
 def default_when(now: datetime, when: str = '') -> datetime:
@@ -207,6 +211,8 @@ def set_reminder(chat: str, text: str, own_words: str = '', now: datetime | None
         return None
     from agent import escalate
     r['important'] = escalate.important(own_words or text)
+    if NAG_RX.search(f'{own_words} {text}'):           # 12/11 "תחפור לי עד שאגיד לך שבוטל" → nag false, and the bot
+        r['nag'] = True                                # had answered "אשב עליך עד שתבטל"
     guessed = not _has_hour(r.get('when', ''))
     if guessed:
         r['when'] = default_when(now, r.get('when', '')).isoformat(timespec='minutes')
@@ -312,6 +318,9 @@ def reminder_action(chat: str, op: str, rid: str, now: datetime | None = None, p
     if op == 'done':
         if rec.get('nag_at'):                              # stop nagging this occurrence
             _advance(rec)
+        if rec.get('repeat', 'none') == 'none':            # 15/11 a one-off he pressed ✅ on is closed (agent/open_items)
+            rec['active'] = False
+            rec['closed'] = now.isoformat(timespec='minutes')
         msg = '✅ מעולה!' + (' אזכיר שוב בפעם הבאה.' if rec.get('active') else '')
     elif op == 'snooze':
         rec['nag_at'] = (now + timedelta(hours=1)).isoformat(timespec='minutes')
@@ -323,6 +332,7 @@ def reminder_action(chat: str, op: str, rid: str, now: datetime | None = None, p
         msg = '🌙 אזכיר מחר ב-09:00.'
     elif op == 'cancel':
         rec['active'] = False
+        rec['closed'] = now.isoformat(timespec='minutes')
         msg = '🗑️ התזכורת בוטלה.'
     elif op == 'imp':                                      # 11/11: follow it up if he doesn't react (agent/escalate.py)
         rec['important'] = True
@@ -342,6 +352,8 @@ def reminder_action(chat: str, op: str, rid: str, now: datetime | None = None, p
         msg = f"⏰ זז: {describe_reminder(rec)}"
     else:
         return '🤷'
+    if rec.get('active'):
+        rec.pop('closed', None)
     _save(d, path)
     return msg
 

@@ -10,6 +10,7 @@
 #                              (scripts/find_panopto_folders.py lists them)
 #    sources.moodle.course_id  – the number in moodle.tau.ac.il/course/view.php?id=…
 #    lecture/tutorial_keywords – optional fallback: words in the recording title
+#    my_staff / other_staff  – optional: tutor names of your groups / other groups (relevance filter)
 #  settings.schedule.semester_start/end – the pipeline is idle outside this window.
 #  All ids, names, rooms and slots below are placeholders.
 # ════════════════════════════════════════════════════════════════════
@@ -210,6 +211,10 @@ courses:
     weekly_schedule:
       max_lectures: 1
       max_tutorials: 1
+    # optional (integrations/univ_relevance.py): staff of YOUR groups vs. other groups, Hebrew and English spellings.
+    # Mail / Moodle posts that name only other groups' staff are filtered as "not your group".
+    my_staff: [Tutor A, מתרגל א]
+    other_staff: [Tutor B, מתרגל ב]
     my_sessions:
     - type: lecture
       day: tue

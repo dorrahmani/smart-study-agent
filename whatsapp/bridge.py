@@ -287,7 +287,19 @@ def _text_and_context(m) -> tuple[str, str, str]:
         if inner.HasField('documentMessage'):
             dm = inner.documentMessage
             return 'document', dm.caption, dm.contextInfo.stanzaID if dm.HasField('contextInfo') else ''
+    # 15/11 a message with no text got the help menu. What we can't read says so in one line (agent/core); an edit, a
+    # reaction or a sticker stays 'other' and gets nothing
+    for field, label in UNREADABLE:
+        try:
+            if m.HasField(field):
+                return 'unsupported', label, ''
+        except ValueError:                                 # a field this neonize build doesn't have
+            continue
     return 'other', '', ''
+
+
+UNREADABLE = (('videoMessage', 'סרטון'), ('ptvMessage', 'סרטון'), ('locationMessage', 'מיקום'),
+              ('liveLocationMessage', 'מיקום'), ('pollCreationMessage', 'סקר'), ('pollCreationMessageV3', 'סקר'))
 
 
 DOC_EXT = {'.zip', '.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.csv', '.md', '.json', '.html', '.htm', '.xml', '.py', '.java',

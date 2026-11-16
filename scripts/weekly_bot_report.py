@@ -62,6 +62,7 @@ def default_paths(root: Path = ROOT) -> dict:
             'undelivered': root / 'data' / 'undelivered_alerts.jsonl',
             'security': root / 'data' / 'security_status.json',
             'improve_state': root / 'data' / 'improve_state.json', 'backlog': root / 'data' / 'improvement_backlog.json',
+            'filtered': root / 'data' / 'univ_filtered.jsonl',
             'deploy_logs': sorted((root / 'logs').glob('deploy.log*')),
             'git_dir': Path(os.environ.get('SSA_GIT_DIR') or (Path.home() / 'smart_study_agent.git'))}
 
@@ -212,7 +213,24 @@ def collect(paths: dict | None = None, now: datetime | None = None, git_log=fixe
     return {'since': since, 'now': now, 'spend': spend(paths, since, now), 'turns': turns(paths, since, now), 'jobs': j,
             'fixes': git_log(paths['git_dir'], j['deploys']) if j['deploys'] else [],
             'undelivered': _undelivered(paths.get('undelivered')), 'security': _security(paths.get('security'), now),
-            'improve': _improve(paths, since)}
+            'improve': _improve(paths, since), 'filtered': _filtered(paths.get('filtered'), since)}
+
+
+def _filtered(path, since: datetime) -> int:
+    """15/11: university updates not sent because they were another group's (integrations/univ_relevance)."""
+    if not path:
+        return 0
+    n = 0
+    try:
+        for ln in Path(path).read_text(encoding='utf-8').splitlines():
+            try:
+                t = _ts(json.loads(ln).get('ts'))
+            except (ValueError, AttributeError):
+                continue
+            n += bool(t and t >= since)
+    except OSError:
+        return 0
+    return n
 
 
 def _improve(paths: dict, since: datetime) -> list[str]:
@@ -299,7 +317,9 @@ def build_text(r: dict) -> str:
     if tu['refused_kinds']:
         gate += ' (' + ', '.join(f'{GATE.get(k, k)} {v}' for k, v in tu['refused_kinds'].most_common()) + ')'
     lines.append(gate)
-    fails = tu['failed'] + sum(tu['mind_fail'].values())
+    if r.get('filtered'):
+        lines.append(f"🔇 לא שלחתי {r['filtered']} עדכונים מהאוניברסיטה שהיו של קבוצה אחרת (\"מה סיננת?\")")
+    fails =tu['failed'] + sum(tu['mind_fail'].values())
     fl = f'⚠️ תקלות: {fails}'
     parts = ([f"{tu['failed']} תשובות \"משהו נכשל\""] if tu['failed'] else []) + \
             [f'{v} {k}' for k, v in tu['mind_fail'].most_common()]

@@ -130,7 +130,9 @@ def to_in_bridge(m: dict) -> 'In':
         return In(chat, kind, text=m.get('text', ''), media=media, reply_to=m.get('reply_to') or None,
                   forwarded=bool(m.get('forwarded')),        # a forwarded picture, voice note or file is someone else's words
                   channel='whatsapp', role=role, group=bool(m.get('group')), context=m.get('context') or '')
-    return In(chat, 'text', text='', channel='whatsapp', role=role, group=bool(m.get('group')))
+    if kind == 'unsupported' and not m.get('group'):    # 15/11 a video / location / poll: one line, never the menu
+        return In(chat, 'unsupported', text=str(m.get('text') or '')[:20], channel='whatsapp', role=role)
+    return In(chat, 'other', text='', channel='whatsapp', role=role, group=bool(m.get('group')))
 
 
 def to_in(m: dict) -> 'In':

@@ -74,19 +74,76 @@ def group_reply():
         _GROUP_REPLY.reset(t)
 
 
-def _log_sent(job: dict) -> None:
+def _log_sent(job: dict, name: str = '') -> None:
     """08/10: the bot didn't know what its own proactive messages said (exam eve, the daily review report),
     so the owner's replies to them were read in a vacuum. Everything sent is logged; the agent reads it as context.
-    05/11 not what went to a group: that text grew from friends' words, and it would reach the agent's prompt."""
+    05/11 not what went to a group: that text grew from friends' words, and it would reach the agent's prompt.
+    15/11 with the outbox file's name: the bridge's receipt (sent/<name>.json) gives the WhatsApp id, so a message he
+    quotes can be found again (quoted_text)."""
     if str(job.get('to', '')).endswith('@g.us'):
         return
     try:
+        row = {'ts': time.strftime('%Y-%m-%dT%H:%M:%S'), 'to': job.get('to', ''),
+               'text': (job.get('text') or job.get('caption') or '')[:1500]}
+        if name:
+            row['file'] = name
         with open(SENT_LOG, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({'ts': time.strftime('%Y-%m-%dT%H:%M:%S'), 'to': job.get('to', ''),
-                                'text': (job.get('text') or job.get('caption') or '')[:1500]},
-                               ensure_ascii=False) + '\n')
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
     except OSError:
         pass
+
+
+def quoted_text(chat: str, msg_id: str | None, outbox: Path | None = None, path: Path | None = None) -> str:
+    """15/11 "מה השינוי ?" quoting the calendar notification was answered about something else: the reply's quoted id
+    is matched against the bridge's receipts, and the row of the sent log with that file name (older rows, from before
+    the name was logged: the same chat within 3 seconds of the file's stamp) is what he quoted. '' = not ours/not found."""
+    if not msg_id:
+        return ''
+    sent = (outbox or OUTBOX) / 'sent'
+    name = ''
+    try:
+        files = sorted(sent.glob('*.json'), key=lambda p: p.name)[-600:]
+    except OSError:
+        return ''
+    for f in reversed(files):
+        try:
+            r = json.loads(f.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if isinstance(r, dict) and r.get('ok') and r.get('id') == msg_id:
+            name = f.name
+            break
+    if not name:
+        return ''
+    try:
+        lines = (path or SENT_LOG).read_text(encoding='utf-8').splitlines()[-1500:]
+    except OSError:
+        return ''
+    rows = []
+    for ln in lines:
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get('to') == chat:
+            if r.get('file') == name:
+                return str(r.get('text') or '')
+            rows.append(r)
+    try:
+        at = int(name.split('_', 1)[0]) / 1000
+    except ValueError:
+        return ''
+    best, gap = '', 3.0
+    for r in rows:
+        if r.get('file'):
+            continue
+        try:
+            t = time.mktime(time.strptime(str(r.get('ts', ''))[:19], '%Y-%m-%dT%H:%M:%S'))
+        except ValueError:
+            continue
+        if abs(t - at) <= gap:
+            best, gap = str(r.get('text') or ''), abs(t - at)
+    return best
 
 
 def recent_sent(chat: str, hours: float = 36, n: int = 6, path: Path | None = None) -> list[dict]:
@@ -123,10 +180,10 @@ def _job(job: dict, wait: float = 0.0, outbox: Path | None = None) -> str | None
         print('  ⚠️ outbox: a send to a group outside a reply was refused')
         return None
     d = outbox or OUTBOX
-    if outbox is None:
-        _log_sent(job)
-    d.mkdir(parents=True, exist_ok=True)
     name = f'{_next_ms()}_{secrets.token_hex(3)}.json'
+    if outbox is None:
+        _log_sent(job, name)
+    d.mkdir(parents=True, exist_ok=True)
     tmp = d / f'.{name}.tmp'
     tmp.write_text(json.dumps(job, ensure_ascii=False), encoding='utf-8')
     tmp.replace(d / name)

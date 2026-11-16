@@ -890,6 +890,40 @@ def cancel_queued(n: int | None = None, everything: bool = False) -> str:
         return f'🗑️ הורדתי מהתור: {_label(item)}'
 
 
+def replace_recent(chat: str, prefix: str, within_s: float, now: float | None = None) -> list[str]:
+    """15/11 one request became two jobs six minutes apart (1115130461e9, 1115131072ea), the second one the better
+    worded: the newer request takes the place of his own same-kind job that started (or was queued) within within_s.
+    Queued → off the queue; running → stopped with its work saved, as "עצור את קלוד" does. → the replaced tasks."""
+    now = time.time() if now is None else now
+    gone: list[str] = []
+    with _lock():
+        q = _load_q()
+        keep = []
+        for i in q['items']:
+            if i.get('chat') == chat and not i.get('quiet') and str(i.get('task', '')).startswith(prefix) \
+                    and now - float(i.get('added') or 0) <= within_s:
+                gone.append(str(i['task']).split('\n', 1)[0])
+            else:
+                keep.append(i)
+        if len(keep) != len(q['items']):
+            q['items'] = keep
+            _save_q(q)
+        st = _load()
+        for jid, j in st.items():
+            if j.get('status') == 'running' and j.get('chat') == chat and not j.get('quiet') \
+                    and str(j.get('task', '')).startswith(prefix) and now - float(j.get('started') or 0) <= within_s:
+                _sh('sudo', '-n', 'pkill', '-KILL', '-u', 'claudeagent', check=False)
+                _snapshot(jid, wip=True)
+                j['status'] = 'stopped'
+                j['replaced'] = True
+                _note(q, jid, '', '')
+                _save(st)
+                _save_q(q)
+                gone.append(str(j['task']).split('\n', 1)[0])
+                break
+    return gone
+
+
 def control(text: str, bare: bool = True) -> tuple[str, str] | None:
     """The owner's words about Claude's work → (action for the audit, reply); None = it wasn't about that.
     bare=False: a lesson or a quiz is going on, so a plain "תמשיך עכשיו" is about that."""
@@ -1137,8 +1171,7 @@ def _deploy_from(jid: str, sha: str, loop: bool = False) -> str | None:
             from agent.improve import DENY_RX
             bad = list(dict.fromkeys(bad + [f for f in files if DENY_RX.fullmatch(f)]))
         if bad:
-            return ('🔒 לא פורס מוואטסאפ: השינוי נוגע בקבצים שלא ברשימת המותר מהטלפון:\n'
-                    + '\n'.join(f'• {f}' for f in bad[:8]) + '\nאת זה רק מהמחשב, אחרי שקוראים את השינוי.')
+            return _to_pc(jid, bad)
         if 'tests/improve_cases.json' in files and (errs := _cases_ok(work)):
             return '🔒 לא פורס: מקרי הבדיקה יכולים רק להתווסף.\n' + '\n'.join(f'• {e}' for e in errs[:5])
         push = _sh('git', '-C', str(work), 'push', 'origin', 'job:main', check=False)
@@ -1147,6 +1180,28 @@ def _deploy_from(jid: str, sha: str, loop: bool = False) -> str | None:
             fails = [l.strip() for l in out.splitlines() if '❌' in l][:5]
             return '❌ הבדיקות האוטומטיות חסמו את הפריסה — השרת לא השתנה.\n' + '\n'.join(fails)
     return None
+
+
+def _to_pc(jid: str, bad: list[str]) -> str:
+    """15/11 "🔒 לא פורס מוואטסאפ … את זה רק מהמחשב" read as a failure he had to do something about. The deploy stays
+    blocked exactly as before; the job is written to data/improvement_backlog.json, which the PC round goes through, and
+    he's told that it's queued there and he needs to do nothing."""
+    job = _load().get(jid) or {}
+    title = _label(job) or f'משימה {jid}'
+    try:
+        from agent import improve
+        improve.add_backlog([{'title': f'פריסה מהמחשב: {title}', 'evidence': f'משימת קלוד {jid} (ענף job-{jid}), מוכנה',
+                              'change': (job.get('summary') or '')[:600] or f'השינוי שבענף job-{jid}',
+                              'files': bad[:12], 'why': 'נוגע בקבצים שנפרסים רק מהמחשב, אחרי קריאת השינוי'}],
+                            datetime.now(), STATE.parent / improve.BACKLOG.name)   # = data/improvement_backlog.json
+        queued = True
+    except Exception as e:
+        print(f'  ⚠️ backlog {jid}: {e!r}'[:200])
+        queued = False
+    shown = '\n'.join(f'• {f}' for f in bad[:6]) + (f'\n• ועוד {len(bad) - 6}' if len(bad) > 6 else '')
+    where = ('נכנס לרשימה של הסבב הבא במחשב, ושם הוא ייקרא וייפרס. אין צורך לעשות כלום.' if queued else
+             f'הוא נשמר בענף job-{jid} ויחכה לסבב במחשב. אין צורך לעשות כלום.')
+    return f'🔒📥 השינוי מוכן, אבל הוא נוגע בקבצים שנפרסים רק מהמחשב:\n{shown}\nלכן הוא לא עלה מהטלפון. {where}'
 
 
 def _restart_worker() -> None:

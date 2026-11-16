@@ -72,7 +72,16 @@ def load_items(cache: Path | None = None, lecturer: Path | None = None) -> list[
         site = []
     moodle_nums = {(a.get('course_key'), _ex_num(a)) for a in items if _ex_num(a)}
     items += [a for a in site if isinstance(a, dict) and (a.get('course_key'), _ex_num(a)) not in moodle_nums]
-    return [a for a in items if _due(a)]
+    return [a for a in items if _due(a) and _for_me(a)]
+
+
+def _for_me(a: dict) -> bool:
+    """15/11: no reminder for another group's submission box / quiz (integrations/univ_relevance, rule only)."""
+    try:
+        from integrations import univ_relevance
+        return univ_relevance.for_me(a.get('course_key'), f"{a.get('title') or ''} {a.get('section') or ''}")
+    except Exception:
+        return True
 
 
 def load_state(path: Path | None = None) -> dict:

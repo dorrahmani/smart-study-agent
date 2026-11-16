@@ -6,7 +6,7 @@ they go on answering from the old text. This takes the old source out of every n
 and uploads the file again. Without --apply it changes nothing and prints what it would do. No LLM (the NotebookLM
 web session).
 
-    venv/bin/python3 scripts/nlm_resync.py "data/summaries/software_1/tutorials/2026-10-21 - Michael - Recitation 1.pdf"
+    venv/bin/python3 scripts/nlm_resync.py "data/summaries/software_1/tutorials/2026-10-21 - Yaron - Recitation 1.pdf"
     venv/bin/python3 scripts/nlm_resync.py --apply "<pdf>" ["<pdf>" ...]
 """
 from __future__ import annotations

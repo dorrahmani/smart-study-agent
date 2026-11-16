@@ -48,7 +48,7 @@ CASES = [
          text='1 תעביר לו ב17:00', gate=NO_GATE, open_qs=OPEN_Q,
          model=dict(kind='answer', reply='אישרתי את פתיחת המשימה, ותזכורת/עדכון יעברו ב-17:00.', open_q=1, open_option=1),
          live='gate {"asked": ["open"], "ok": []} and still "אישרתי את פתיחת המשימה… יעברו ב-17:00"',
-         reply_has=['לא ביצעתי'], reply_lacks=['אישרתי את פתיחת', '17:00'], no=['answers_open', 'action']),
+         reply_has=['על מה מדובר'], reply_lacks=['אישרתי את פתיחת', '17:00', 'לא הייתי בטוח'], no=['answers_open', 'action']),
     dict(id='feature-refused-claims-documented', cls='false_claim', when='10/11 11:02', kind='settle',
          text='הבוט לא עונה לי כמו שצריך', gate=NO_GATE,
          model=dict(kind='feature', reply='תיעדתי את זה כמשימת פיתוח', feature='לשפר את הבוט'),
@@ -58,7 +58,8 @@ CASES = [
          text='תשקיע בברכה יותר מושקעת', gate=NO_GATE,
          model=dict(kind='answer', reply='מעביר לבת הזוג עכשיו! 🎉', action_kind='message_partner', action_text='מזל טוב ליום ההולדת'),
          live='"מעביר לבת הזוג עכשיו" and nothing went to the partner',
-         reply_lacks=['מעביר לבת הזוג'], reply_has=['לא ביצעתי'], no=['action'], refused='message_partner'),
+         reply_lacks=['מעביר לבת הזוג', 'לא הייתי בטוח'], reply_has=['לא העברתי לבת הזוג', 'תשלח לבת הזוג'], no=['action'],
+         refused='message_partner'),
     dict(id='calendar-ok-but-dropped-part-not-claimed', cls='false_claim', when='10/11 10:59', kind='settle',
          text='כן ליומן תזכורת לביטול', gate={'calendar_add': True}, open_qs=OPEN_Q + OPEN_Q,
          model=dict(kind='answer', reply='התזכורת תישלח ב-17:00\nעוד משהו?', action_kind='calendar_add',
@@ -77,8 +78,8 @@ CASES = [
     # ── the Claude job's text is this message, not the history ──
     dict(id='job-text-not-glued-to-eilat-booking', cls='job_text', when='10/11 11:02', kind='settle',
          text='תתקן שהתזכורות יעברו דרך NotebookLM', gate=YES_GATE,
-         history=[('user', 'הזמנתי אילת לאחרי העבודה בת הזוג תבוא ביום חמישי', 3), ('user', 'כן ליומן תזכורת לביטול', 3)],
-         model=dict(kind='feature', reply='הבנתי', feature='הזמנתי אילת לאחרי העבודה… וגם לחדש את NotebookLM'),
+         history=[('user', 'הזמנתי טבריה לאחרי העבודה בת הזוג תבוא ביום חמישי', 3), ('user', 'כן ליומן תזכורת לביטול', 3)],
+         model=dict(kind='feature', reply='הבנתי', feature='הזמנתי טבריה לאחרי העבודה… וגם לחדש את NotebookLM'),
          live='the 🛠️ text glued 15 minutes of his messages (a hotel booking) onto a NotebookLM job',
          feature='תתקן שהתזכורות יעברו דרך NotebookLM'),
     dict(id='job-text-is-his-complaint-not-a-model-spec', cls='job_text', when='05/11 10:12', kind='settle',
@@ -100,7 +101,8 @@ CASES = [
          model=dict(kind='answer', reply='הבנתי', action_kind='reminder', action_text='לבטל מנוי', exam_course='מאקרו',
                     exam_taking='no', open_q=1, open_option=1, learned='לבטל מנוי'),
          live='"1" was read as a yes to everything in the last 15 minutes',
-         no=['action', 'exam_decision', 'answers_open', 'learned'], refused='reminder', reply_has=['לא ביצעתי']),
+         no=['action', 'exam_decision', 'answers_open', 'learned'], refused='reminder', reply_has=['לא קבעתי תזכורת'],
+         reply_lacks=['לא הייתי בטוח']),
     dict(id='bare-ken-makes-no-reminder', cls='bare_confirm', when='25/10 07:51', kind='settle',
          text='כן', gate=YES_GATE, history=[('user', 'תזכיר לי לקנות פרחים', 1)],
          model=dict(kind='answer', reply='הבנתי', action_kind='reminder', action_text='לקנות פרחים'),
@@ -240,10 +242,102 @@ CASES = [
          turns=['יצא פתרון לתרגיל 5 בהסתברות?'], reply_has=['עדיין לא', 'עוד לא הגשת'], docs=0, live='(new)'),
     dict(id='mute-coursework-nudges-in-words', cls='secretary', when='14/11', kind='secretary',
          turns=[('בלי מטלות', {})], reply_has=['בלי מטלות ובחנים'], muted='oblig', live='(new)'),
+
+    # ── 15/11: his plain report closes his own open reminder / task (A, E) ──
+    dict(id='hotel-cancelled-closes-the-reminder', cls='status_report', when='15/11 16:07', kind='turns',
+         reminders=[('בטל את המלון הקודם בטבריה', 7)], turns=[dict(text='ביטלתי את המלון')],
+         reply_has=['✅ סגרתי', 'המלון'], reply_lacks=['לא הייתי בטוח'], closed=['בטל את המלון הקודם בטבריה'],
+         live='"לא ביצעתי את זה, כי לא הייתי בטוח שזו בקשה שלך" three times'),
+    dict(id='bare-it-is-closed-closes-the-raised-one', cls='status_report', when='15/11 16:08', kind='turns',
+         reminders=[('בטל את המלון הקודם בטבריה', 7)], turns=[dict(text='זה סגור אני ביטלתי')],
+         reply_has=['✅ סגרתי'], closed=['בטל את המלון הקודם בטבריה'], live='the same refusal, word for word'),
+    dict(id='asked-them-waiting-is-a-check-tomorrow', cls='status_report', when='15/11 13:05', kind='turns',
+         reminders=[('בטל את המלון הקודם בטבריה', 4)], turns=[dict(text='ביקשתי מהם במייל ביטול, מחאה לעדכון')],
+         reply_has=['מחר ב-09:00'], pays=['oi:done:r:'], waiting=['בטל את המלון הקודם בטבריה'],
+         live='"ביקשתי מהם… מחכה לעדכון" got the refusal; it is waiting, not done'),
+    dict(id='bare-sagur-slang-closes-nothing', cls='status_report', when='—', kind='turns',
+         reminders=[('בטל את המלון הקודם בטבריה', 3)], turns=[dict(text='סגור')], open_left=['בטל את המלון הקודם בטבריה'],
+         reply_lacks=['סגרתי'], live='(control) "סגור" alone is "deal"'),
+    dict(id='finished-the-exam-closes-no-hotel', cls='status_report', when='—', kind='turns',
+         reminders=[('בטל את המלון הקודם בטבריה', 3), ('לשלוח לחבר_א את הסיכום', 30)], turns=[dict(text='סיימתי את המבחן')],
+         open_left=['לשלוח לחבר_א את הסיכום'], reply_lacks=['סגרתי'],
+         live='(control) a report about something else closes nothing'),
+
+    # ── 15/11 13:14: a business card was "לא הצלחתי לקרוא" (B) ──
+    dict(id='business-card-with-landline-waid-is-saved', cls='contact_card', when='15/11 13:14', kind='turns',
+         turns=[dict(kind='contact', text='מלון לדוגמה\nBEGIN:VCARD\nVERSION:3.0\nN:;מלון לדוגמה;;;\nFN:מלון לדוגמה\n'
+                                             'ORG:מלון לדוגמה\nX-WA-BIZ-NAME:מלון לדוגמה\n'
+                                             'item1.TEL;type=CELL;type=VOICE;waid={LANDLINE}:+972 3-123-4567\nEND:VCARD')],
+         reply_has=['שמרתי את מלון לדוגמה'], saved={'מלון לדוגמה': '{LANDLINE}'},
+         live='"📇 לא הצלחתי לקרוא את איש הקשר"'),
+    dict(id='card-with-display-only-name-from-biz-field', cls='contact_card', when='—', kind='turns',
+         turns=[dict(kind='contact', text='\nBEGIN:VCARD\nVERSION:3.0\nX-WA-BIZ-NAME:עסק לדוגמה\n'
+                                             'TEL;type=CELL;waid={MOBILE}:+{MOBILE}\nEND:VCARD')],
+         reply_has=['שמרתי את עסק לדוגמה'], saved={'עסק לדוגמה': '{MOBILE}'}),
+    dict(id='card-without-a-number-says-so', cls='contact_card', when='—', kind='turns',
+         turns=[dict(kind='contact', text='מישהו\nBEGIN:VCARD\nVERSION:3.0\nFN:מישהו\nEND:VCARD')],
+         reply_has=['לא מצאתי באיש הקשר מספר'], live='(new) the reply says what is missing'),
+
+    # ── 15/11 13:15: "תיצור איתם קשר ותבטל" right after the card (C) ──
+    dict(id='reach-them-drafts-with-the-booking', cls='reach_contact', when='15/11 13:15', kind='turns',
+         docs=['📄 *אישור הזמנה — מלון לדוגמה בטבריה*\nהזמנה על שם המשתמש, 12–14/12, הזמנה מספר AB-77'],
+         plan=dict(name='מלון לדוגמה', kind='message', goal='לבטל את ההזמנה',
+                   first_message='היי מלון לדוגמה, כאן העוזר האישי של המשתמש 🤖 נבקש לבטל את ההזמנה AB-77', missing=''),
+         turns=[dict(kind='contact', text='מלון לדוגמה\nBEGIN:VCARD\nFN:מלון לדוגמה\nTEL;waid={LANDLINE}:+972 3\nEND:VCARD'),
+                dict(text='אני רוצה שתיצור איתם קשר ותבטל את המלון יש לך מספר הזמנה')],
+         reply_has=['לשלוח?', 'AB-77', 'לקחתי מ'], pays=['co:go:'], plan_has=['AB-77', '⟦נתון'], nothing_sent=True,
+         reply_lacks=['אין לי אפשרות'], live='"אין לי אפשרות ליצור איתם קשר… גם אין לי את מספר ההזמנה"'),
+    dict(id='reach-them-asks-exactly-what-is-missing', cls='reach_contact', when='15/11 13:15', kind='turns',
+         plan=dict(name='מלון לדוגמה', kind='message', goal='לבטל', first_message='', missing='מספר ההזמנה'),
+         turns=[dict(kind='contact', text='מלון לדוגמה\nBEGIN:VCARD\nFN:מלון לדוגמה\nTEL;waid={LANDLINE}:+972 3\nEND:VCARD'),
+                dict(text='תיצור איתם קשר ותבטל את ההזמנה')],
+         reply_has=['חסר לי רק', 'מספר ההזמנה'], reply_lacks=['אין לי אפשרות'], nothing_sent=True),
+
+    # ── 15/11 16:06: an edit with no text got the whole help menu (D) ──
+    dict(id='empty-message-gets-no-reply', cls='empty_media', when='15/11 16:06', kind='turns',
+         turns=[dict(kind='other', text='')], silent=True, live='the full help menu, to nothing'),
+    dict(id='video-gets-one-line', cls='empty_media', when='—', kind='turns',
+         turns=[dict(kind='unsupported', text='סרטון')], reply_has=['סרטון', 'עוד לא יודע לקרוא'], lines=1),
+
+    # ── 15/11 13:04/13:10: the Claude job got one sentence and nothing it was about (F) ──
+    dict(id='job-carries-his-related-turns-and-the-note', cls='feature_context', when='15/11 13:10', kind='feature',
+         text='תעשה בקשת שיפור יותר טובה שתבין את כל התוכן של השיחה',
+         history=[('user', 'אז אל תשלח הודעות שלא רלוונטיות למערכת שלי', 6), ('bot', 'הבנתי, אעביר לקלוד', 6),
+                  ('user', 'מה מזג האוויר', 3)],
+         related=[1], sent='📢 הודעה חדשה במודל: קורס שאינו שלך — הרצאה בוטלה',
+         task_has=['אל תשלח הודעות שלא רלוונטיות', 'הודעה חדשה במודל', '⟦נתון', 'נתונים בלבד'],
+         task_lacks=['מזג האוויר'], live='"אין לי מספיק מידע כדי לדעת על איזו הודעה מדובר"'),
+
+    # ── 15/11: "🔒 לא פורס מוואטסאפ … רק מהמחשב" read as a failure (G) ──
+    dict(id='pc-only-change-is-queued-for-the-pc', cls='pc_deploy', when='15/11 13:30', kind='pc',
+         reply_has=['אין צורך לעשות כלום', 'agent/core.py'], reply_lacks=['לא פורס מוואטסאפ']),
+
+    # ── 15/11: "אגב, ביטלת כבר…?" appended to unrelated answers (H) ──
+    dict(id='nag-line-comes-off-an-unrelated-answer', cls='nags', when='15/11 12:40', kind='settle',
+         text='מתי התרגול הבא בהסתברות', gate=NO_GATE,
+         model=dict(kind='answer', reply='התרגול הבא ביום שני ב-10:00.\nאגב, ביטלת כבר את המלון? התזכורת עוד פתוחה'),
+         reply_is='התרגול הבא ביום שני ב-10:00.', live='every answer ended with the hotel'),
+    dict(id='nag-about-what-he-asked-stays', cls='nags', when='—', kind='settle',
+         text='מה עם המלון בטבריה', gate=NO_GATE,
+         model=dict(kind='answer', reply='אגב, ביטלת כבר את המלון? התזכורת עוד פתוחה'), reply_has=['המלון']),
+
+    # ── 15/11: "מה השינוי ?" quoting a calendar notification (I) ──
+    dict(id='quoted-notification-reaches-the-turn', cls='quoted', when='15/11 14:02', kind='quoted',
+         sent='📅 עדכנתי ביומן: תוכנה 1 תרגול — 12:00–13:00 → 12:00–14:00', turn='מה השינוי ?',
+         live='the answer was about the last thing said, not the quoted change'),
 ]
 
 CLASSES = ('false_claim', 'job_text', 'bare_confirm', 'yes_closes', 'partner_followup', 'known_alert', 'mail_capability',
-           'forwarded', 'cost_cap', 'secretary', 'obligations')
+           'forwarded', 'cost_cap', 'secretary', 'obligations', 'status_report', 'contact_card', 'reach_contact',
+           'empty_media', 'feature_context', 'pc_deploy', 'nags', 'quoted')
+# fake numbers, built here so the checked-in set holds no 9+-digit run (test_conv_set_is_anonymous…)
+FAKE = {'{LANDLINE}': '9723' + '1234567', '{MOBILE}': '9725' + '01234567'}
+
+
+def _fake(s: str) -> str:
+    for k, v in FAKE.items():
+        s = s.replace(k, v)
+    return s
 
 
 # ── a stubbed Gemini ────────────────────────────────────────────────────────
@@ -673,10 +767,118 @@ def run_obligations(c, mp, tmp):
     return bad
 
 
+def run_turns(c, mp, tmp):
+    """15/11: whole messages through core.handle — his reminders, his earlier files, a card, a request — with the model
+    calls written into the case (`plan`) and nothing leaving (the outbox is tmp)."""
+    import agent.core as core
+    import bot.brain as brain
+    import whatsapp.outbox as outbox
+    from agent import assistant, contacts, coordinator, life
+    mp.setattr(contacts, 'STORE', tmp / 'contacts.json')
+    mp.setattr(coordinator, 'TASKS', tmp / 'coord.json')
+    mp.setattr(outbox, 'OUTBOX', tmp / 'outbox')
+    planned = []
+    mp.setattr(coordinator, '_json_call', lambda prompt, op, client=None: (planned.append(prompt), dict(c.get('plan') or {}))[1])
+    mp.setattr(assistant, 'decide', lambda *a, **k: {'kind': 'answer', 'reply': '(תשובת המודל)'})
+    mp.setattr(brain, 'classify', lambda m, history='': {'action': 'chat'})
+    now = datetime.now()
+    life._save({'reminders': [{'id': f'r{i}', 'chat': OWNER_ID, 'text': t, 'repeat': 'none', 'active': True,
+                               'due': (now - timedelta(hours=h)).isoformat(timespec='minutes')}
+                              for i, (t, h) in enumerate(c.get('reminders') or [])]})
+    if c.get('docs'):
+        with open(tmp / 'agent_conversations.jsonl', 'w', encoding='utf-8') as f:
+            for d in c['docs']:
+                f.write(json.dumps({'ts': (now - timedelta(days=5)).isoformat(timespec='seconds'), 'role': 'owner',
+                                    'kind': 'document', 'forwarded': False, 'in': '', 'out': [['text', d]]},
+                                   ensure_ascii=False) + '\n')
+    sp = tmp / 'st.json'
+    outs = []
+    for t in c['turns']:
+        outs = core.handle(core.In(OWNER_ID, **{k: _fake(v) if isinstance(v, str) else v for k, v in t.items()}), state_path=sp)
+    reply = '\n'.join(o.text or '' for o in outs)
+    pays = [b[1] for o in outs for b in (o.buttons or [])]
+    bad = [f'reply lacks {s!r}: {reply[:160]!r}' for s in c.get('reply_has', []) if s not in reply]
+    bad += [f'reply has {s!r}: {reply[:160]!r}' for s in c.get('reply_lacks', []) if s in reply]
+    bad += [f'no button {p!r}: {pays}' for p in c.get('pays', []) if not any(x.startswith(p) for x in pays)]
+    if c.get('silent') and outs:
+        bad.append(f'answered: {reply[:120]!r}')
+    if 'lines' in c and len([o for o in outs if o.text]) != c['lines']:
+        bad.append(f'{len(outs)} messages, not {c["lines"]}')
+    rems = {r['text']: r for r in life._load()['reminders']}
+    bad += [f'{t!r} not closed' for t in c.get('closed', []) if rems[t].get('active') or not rems[t].get('closed')]
+    bad += [f'{t!r} closed' for t in c.get('open_left', []) if rems[t].get('closed') or not rems[t].get('active')]
+    bad += [f'{t!r} has no check tomorrow' for t in c.get('waiting', [])
+            if rems[t].get('closed') or not str(rems[t].get('nag_at', '')).endswith('09:00')]
+    for name, phone in (c.get('saved') or {}).items():
+        if contacts.find(name) != (name, _fake(phone)):
+            bad.append(f'saved {contacts.find(name)!r}')
+    bad += [f'the plan never saw {s!r}' for s in c.get('plan_has', []) if not any(s in p for p in planned)]
+    if c.get('nothing_sent') and list((tmp / 'outbox').glob('*.json')):
+        bad.append('something went out before a ✅')
+    return bad
+
+
+def run_feature(c, mp, tmp):
+    from agent import feature_request as fr
+    now = datetime.now()
+    if c.get('sent'):
+        with open(tmp / 'wa_outgoing.jsonl', 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'ts': (now - timedelta(minutes=20)).strftime('%Y-%m-%dT%H:%M:%S'), 'to': OWNER_ID,
+                                'text': c['sent']}, ensure_ascii=False) + '\n')
+    task = fr.build(OWNER_ID, c['text'], _hist(c['history'], now), c.get('related'), now=now)
+    bad = [f'task lacks {s!r}' for s in c.get('task_has', []) if s not in task]
+    bad += [f'task has {s!r}' for s in c.get('task_lacks', []) if s in task]
+    if not task.startswith(f"{fr.PREFIX} (מהוואטסאפ") or c['text'] not in task.split('\n')[0]:
+        bad.append(f'the head is not his words: {task[:120]!r}')
+    if re.search(r'⟦/?נתון [0-9a-f]', fr.shown(task)) or 'אל תשלח הודעות' not in fr.shown(task):
+        bad.append('the confirmation shows the fence marks')
+    return bad
+
+
+def run_pc(c, mp, tmp):
+    from agent import claude_job as cj
+    mp.setattr(cj, 'STATE', tmp / 'claude_jobs.json')
+    (tmp / 'claude_jobs.json').write_text(json.dumps({'j1': {'task': 'בקשת שיפור מהמשתמש (מהוואטסאפ, 15/11 13:10): שיפור',
+                                                              'status': 'ready', 'summary': 'תיקון: הקשר לבקשה'}},
+                                                     ensure_ascii=False), encoding='utf-8')
+    said = cj._to_pc('j1', ['agent/core.py'])
+    bad = [f'reply lacks {s!r}: {said!r}' for s in c.get('reply_has', []) if s not in said]
+    bad += [f'reply has {s!r}' for s in c.get('reply_lacks', []) if s in said]
+    try:
+        items = json.loads((tmp / 'improvement_backlog.json').read_text(encoding='utf-8'))['items']
+    except (OSError, ValueError, KeyError):
+        items = []
+    if not any('j1' in i.get('evidence', '') and 'agent/core.py' in i.get('files', []) for i in items):
+        bad.append(f'not in the backlog: {items}')
+    return bad
+
+
+def run_quoted(c, mp, tmp):
+    import agent.core as core
+    import whatsapp.outbox as outbox
+    from agent import mind
+    mp.setattr(outbox, 'OUTBOX', tmp / 'outbox')
+    name = outbox._job({'to': OWNER_ID, 'kind': 'text', 'text': c['sent']})
+    (tmp / 'outbox' / 'sent').mkdir(parents=True, exist_ok=True)
+    (tmp / 'outbox' / 'sent' / name).write_text(json.dumps({'ok': True, 'id': 'WAMSG1'}), encoding='utf-8')
+    outbox._job({'to': OWNER_ID, 'kind': 'text', 'text': 'הודעה אחרת אחריה'})
+    seen = []
+    mp.setattr(mind, 'think', lambda text, chat, u, client=None: (seen.append(u.get('_quoted')), None)[1])
+    u = {}
+    core._mind_turn(core.In(OWNER_ID, text=c['turn'], reply_to='WAMSG1'), u, c['turn'])
+    bad = [] if seen == [c['sent']] else [f'the turn saw {seen!r}']
+    if '_quoted' in u:
+        bad.append('the quote stayed in the state')
+    if outbox.quoted_text(OWNER_ID, 'OTHER') or outbox.quoted_text('x@test', 'WAMSG1'):
+        bad.append('found a quote for another id / chat')
+    return bad
+
+
 RUNNERS = {'settle': run_settle, 'review': run_review, 'yes_closes': run_yes_closes, 'partner': run_partner,
            'partner_route': run_partner_route,
            'alert': run_alert, 'forwarded': run_forwarded, 'core': run_core, 'cost': run_cost, 'web_cost': run_web_cost,
-           'secretary': run_secretary, 'obligations': run_obligations}
+           'secretary': run_secretary, 'obligations': run_obligations, 'turns': run_turns, 'feature': run_feature,
+           'pc': run_pc, 'quoted': run_quoted}
 
 
 def run_case(c: dict) -> list[str]:
@@ -746,6 +948,38 @@ def test_conv_secretary_reminders_and_initiative():
 
 def test_conv_obligations_answered_from_the_store():
     run_class('obligations')
+
+
+def test_conv_status_report_closes_his_own_item():
+    run_class('status_report')
+
+
+def test_conv_contact_card_is_read():
+    run_class('contact_card')
+
+
+def test_conv_reach_the_shared_contact_drafts_for_a_yes():
+    run_class('reach_contact')
+
+
+def test_conv_empty_or_unreadable_message():
+    run_class('empty_media')
+
+
+def test_conv_feature_job_carries_the_context():
+    run_class('feature_context')
+
+
+def test_conv_pc_only_deploy_is_queued_kindly():
+    run_class('pc_deploy')
+
+
+def test_conv_no_nags_on_unrelated_answers():
+    run_class('nags')
+
+
+def test_conv_quoted_message_reaches_the_turn():
+    run_class('quoted')
 
 
 PRIVATE = [re.compile(r'(?:\+?972|0)5\d[-\s]?\d{3}[-\s]?\d{4}'),          # phone numbers

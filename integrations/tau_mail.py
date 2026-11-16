@@ -136,10 +136,19 @@ TRIAGE = """אתה מזכיר/ה של המשתמש, סטודנט באוניבר�
            אינפיניטסימלי"). לא שיעורי בית/תרגילים בקורסים ולא אירוע שמגיעים אליו. ריק אם אין",
   "task_due": "YYYY-MM-DD — עד מתי המשימה; ריק אם אין תאריך במייל",
   "lesson_change": "אם מודיעים על ביטול / הזזה / שינוי חדר של שיעור או תרגול קיים — משפט אחד: הקורס, התאריך המקורי
-                    המלא, ומה השתנה (בוטל / מועד ושעה חדשים / חדר חדש). ריק אם אין"}}
+                    המלא, ומה השתנה (בוטל / מועד ושעה חדשים / חדר חדש). ריק אם אין",
+  "relevant": "yes" | "no" | "unsure" — האם זה נוגע לקבוצות של המשתמש (המערכת שלו למטה). no רק כשהמייל מדבר במפורש על
+              קבוצה / יום / שעה / מתרגל / מרצה של קבוצה אחרת באותו קורס, ושום דבר בו לא חל על הקבוצה של המשתמש. הודעה לכל
+              הקורס (מבחן, שיעורי בית, חומר, הקלטות, ציונים, טפסים) או מייל שלא על קורס = yes. לא ברור = unsure,
+  "why": "חצי שורה — למה relevant כזה",
+  "affects": "משפט אחד: מה משתנה בשיעור / בתרגול של המשתמש עצמו (תאריך, חדר, שעה, ביטול). ריק אם שום דבר שלו לא משתנה —
+              אל תכתוב 'שלך לא משתנה'"}}
 urgent = דורש פעולה/תשומת לב היום-מחר: שינוי מבחן/חדר/מועד, דדליין קרוב, ביטול שיעור, מרצה שפונה אליו אישית,
          ציון/ערעור, תשלום/חסימה. low = ניוזלטר, אירועי רווחה, פרסומים כלליים. השאר normal.
 אל תמציא — רק ממה שכתוב במייל.
+
+המערכת של המשתמש — רק הקבוצות שלו (בכל קורס יש עוד קבוצות, בימים ובשעות אחרים ועם מתרגלים אחרים):
+{timetable}
 
 {items}"""
 
@@ -172,8 +181,15 @@ def triage(mails: list[dict], client=None) -> list[dict]:
                         + bare((m['text'] or m['snippet'])[:1200]) + f'\n⟦/מייל {fence}⟧' for i, m in enumerate(mails))
     from utils.budget import BudgetLocked
     try:
+        from integrations import univ_relevance
+        timetable = univ_relevance.timetable_text() or '(לא ידוע)'
+    except Exception as e:
+        print(f'  ⚠️ triage timetable: {e!r}'[:200])
+        timetable = '(לא ידוע)'
+    try:
         resp = client.models.generate_content(
-            model=MODEL, contents=TRIAGE.format(now=datetime.now().strftime('%A %d/%m/%Y %H:%M'), items=items, fence=fence),
+            model=MODEL, contents=TRIAGE.format(now=datetime.now().strftime('%A %d/%m/%Y %H:%M'), items=items, fence=fence,
+                                                timetable=timetable),
             config=T.GenerateContentConfig(temperature=0.1, max_output_tokens=3000, response_mime_type='application/json',
                                            thinking_config=T.ThinkingConfig(thinking_level='low')))
         from utils.usage_tracker import log_gemini
@@ -199,7 +215,71 @@ def triage(mails: list[dict], client=None) -> list[dict]:
                     'action': said(r.get('action'), 300), 'dated': said(r.get('dated'), 200),
                     'task': said(r.get('task'), 200),
                     'task_due': d if re.fullmatch(r'\d{4}-\d{2}-\d{2}', d := (r.get('task_due') or '').strip()) else '',
-                    'lesson_change': said(change, 300)})
+                    'lesson_change': said(change, 300),
+                    'relevant': rel if (rel := str(r.get('relevant') or '').strip().lower()) in ('yes', 'no', 'unsure') else '',
+                    'rel_why': said(r.get('why'), 160), 'affects': said(r.get('affects'), 200)})
+    return out
+
+
+# ── relevance: only what concerns HIS groups (15/11) ───────────────────────
+
+def _verdict(m: dict) -> tuple[dict, str | None, object]:
+    """The rule's verdict on one mail / Moodle post (integrations/univ_relevance), its course and its day."""
+    from integrations import univ_relevance as ur
+    try:
+        ck = m.get('course_key') or ur.course_of(f"{m.get('from', '')} {m.get('subject', '')} {(m.get('text') or '')[:600]}")
+        ref = ur.ref_date(m.get('date'))
+        return ur.classify(ck, m.get('subject', ''), m.get('text') or m.get('snippet') or '', ref), ck, ref
+    except Exception as e:
+        print(f'  ⚠️ relevance rule: {e!r}'[:200])
+        return {'rel': 'na', 'why': ''}, None, None
+
+
+def _drop(m: dict, ck, why: str, how: str, source: str) -> None:
+    from integrations import univ_relevance as ur
+    print(f"  🔇 not his group ({how}): {str(m.get('subject', ''))[:60]} — {why}"[:200])
+    ur.log_filtered({'source': source, 'course': ck or '', 'from': sender_name(m.get('from', '')),
+                     'subject': no_links(re.sub(r'^\s*\d{6,}\s*-\s*', '', m.get('subject', '')))[:160],
+                     'why': no_links(why)[:200], 'how': how, 'id': m.get('id', '')})
+
+
+def gate(mails: list[dict], triager, source: str = 'mail') -> list[dict]:
+    """15/11 (The owner: "אני רוצה שהודעות שלא רלוונטיות אליי אל תשלח"): another group's update never reaches him. The rule
+    decides first — what it drops never reaches the model; the rest is triaged (one call, with his timetable) and the
+    model's relevant decides only what the rule couldn't. Unsure → sent with one line, and no calendar change."""
+    from integrations import univ_relevance as ur
+    keep, info = [], {}
+    for m in mails:
+        v, ck, ref = _verdict(m)
+        if v['rel'] == 'no':
+            _drop(m, ck, v.get('why', ''), 'rule', source)
+            continue
+        keep.append(m)
+        info[m['id']] = (v, ck, ref, m)
+    rows = triager(keep) if keep else []
+    out = []
+    for r in rows:
+        v, ck, ref, m = info.get(r.get('id')) or ({'rel': 'na'}, None, None, r)
+        rel = v['rel']
+        if rel is None:                                        # the rule couldn't tell: the model's word
+            model = r.get('relevant') or 'yes'
+            if model == 'no' and r.get('level') != 'urgent':
+                _drop(m, ck, r.get('rel_why') or v.get('why', ''), 'gemini', source)
+                continue
+            rel = 'unsure' if model in ('no', 'unsure') else 'yes'
+        r = dict(r)
+        if rel == 'unsure':
+            r['relevance'] = 'unsure'
+            r['my_slot'] = v.get('slot') or (ur.my_slot(ck, v.get('kinds')) if ck else '')
+            r['lesson_change'] = r['dated'] = ''               # maybe not his session: no calendar change from it
+        for k in ('lesson_change', 'dated'):                    # 26/10 another group's Monday lecture offered to the calendar
+            if r.get(k) and ck and ur.classify(ck, r[k], '', ref)['rel'] == 'no':
+                r[k] = ''
+        aff = ur.affects_line(r.get('affects'))
+        if not aff and rel == 'yes' and v.get('change'):
+            aff = f"{v.get('why', '')}: {said(v['change'], 160)}"
+        r['affects'] = said(aff, 220) if rel == 'yes' and aff else ''      # "how it changes YOUR session", or nothing
+        out.append(r)
     return out
 
 
@@ -244,7 +324,8 @@ def check(service=None, client=None, fetcher=None, triager=None) -> list[dict]:
     if new and not first:
         skip = [m for m in new if SKIP_LABELS & set(m['labels'])]
         real = [m for m in new if m not in skip]
-        out = (triager or (lambda ms: triage(ms, client)))(real)
+        out = gate(real, triager or (lambda ms: triage(ms, client)), 'mail')
+        skip = gate(skip, lambda ms: list(ms), 'mail')          # Moodle's forum mail can land here: same rule, no LLM
         out += [{**{k: m[k] for k in ('id', 'thread', 'from', 'subject', 'attachments')}, 'level': 'low',
                  'verified': bool(m.get('verified')), 'summary': said(m['subject'], 400), 'action': '', 'dated': ''}
                 for m in skip]
@@ -289,6 +370,11 @@ def item_text(r: dict) -> str:
     out = f"📧 *{name}* — {no_links(r['subject'])}\n{r['summary']}"
     if r.get('action'):
         out += f"\n👉 {r['action']}"
+    if r.get('affects'):                                       # 15/11 how it changes HIS session, in one line
+        out += f"\n🎯 {r['affects']}"
+    if r.get('relevance') == 'unsure':
+        from integrations import univ_relevance
+        out += '\n' + univ_relevance.unsure_line(r.get('my_slot', ''))
     if r.get('task_added'):
         out += '\n📌 הוספתי ליומן ואזכיר עד שתסמן ✅'
     if r.get('attachments'):
