@@ -5,7 +5,12 @@
 # Your own literal values (phone, e-mail, ID, server IP) are added from a file OUTSIDE the repo if it exists:
 #   ~/.config/ssa/private_values.txt  (one value per line)  — or set SSA_PRIVATE_VALUES=/path/to/file
 ROOT="$(git rev-parse --show-toplevel)" || exit 1
-PY="$ROOT/venv/bin/python"; [ -x "$PY" ] || PY="$ROOT/venv/Scripts/python.exe"; [ -x "$PY" ] || PY="$(command -v python3 || command -v python)"
+PY=""
+# the first interpreter that really runs (on Windows "python3" can be a Store stub that only prints a hint)
+for c in "$ROOT/venv/bin/python" "$ROOT/venv/Scripts/python.exe" python3 python py; do
+  if "$c" -c "" >/dev/null 2>&1; then PY="$c"; break; fi
+done
+[ -n "$PY" ] || { echo "pre-push: no working Python found — push blocked (the scan could not run)."; exit 1; }
 VALUES="${SSA_PRIVATE_VALUES:-$HOME/.config/ssa/private_values.txt}"
 if [ -f "$VALUES" ]; then
   "$PY" "$ROOT/scripts/release_scan.py" --values "$VALUES"
