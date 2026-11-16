@@ -92,9 +92,11 @@ def _portal_lessons(day: date) -> list[str] | None:
 def lectures_on(day: date) -> list[str]:
     """This semester's sessions on that day — from the university site (13/10: the config still had last month's room,
     'בניין לדוגמה 436' vs the site's 'בניין לדוגמה 514'); the config's my_sessions only as a fallback. Semester only."""
-    import yaml
+    from config.features import courses_config
     from config.paths import ACTIVE_COURSES, COURSE_NAMES
-    cfg = yaml.safe_load((ROOT / 'config' / 'courses.yaml').read_text(encoding='utf-8')) or {}
+    cfg = courses_config()                          # {} in assistant-only mode → no lectures, never a crash
+    if not cfg:
+        return []
     sched = ((cfg.get('settings') or {}).get('schedule') or {})
     try:
         if not (date.fromisoformat(str(sched.get('semester_start'))) <= day <= date.fromisoformat(str(sched.get('semester_end')))):

@@ -38,6 +38,12 @@ def semester_active(config: dict, today: date | None = None,
         return False, 'כבוי ידנית (SMART_STUDY_DISABLE=1)'
     if os.getenv('SMART_STUDY_FORCE') == '1':
         return True, 'הופעל בכוח (SMART_STUDY_FORCE=1)'
+    try:                                            # assistant-only install: the lecture pipeline never runs
+        from config.features import study_enabled
+        if not study_enabled():
+            return False, 'תוסף הסטודנט כבוי (SSA_STUDY=0)'
+    except ImportError:
+        pass
     sched = (config.get('settings') or {}).get('schedule') or {}
     today = today or date.today()
 
@@ -79,7 +85,16 @@ def daily_pipeline_should_run(config: dict, today: date | None = None) -> tuple[
 def load_config(root: Path | None = None) -> dict:
     import yaml
     root = root or Path(__file__).resolve().parent.parent
-    with open(root / 'config' / 'courses.yaml', encoding='utf-8') as f:
+    try:                                            # assistant-only: no courses.yaml → {} → "not in semester", no crash
+        from config.features import study_enabled
+        if not study_enabled():
+            return {}
+    except ImportError:
+        pass
+    p = root / 'config' / 'courses.yaml'
+    if not p.exists():
+        return {}
+    with open(p, encoding='utf-8') as f:
         return yaml.safe_load(f) or {}
 
 

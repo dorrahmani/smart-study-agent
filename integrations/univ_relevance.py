@@ -174,11 +174,8 @@ def read(seg: str, ref: date, relative: bool = True) -> dict:
 # ── his sessions and the people around them ─────────────────────────────────
 
 def _yaml() -> dict:
-    import yaml
-    try:
-        return yaml.safe_load((ROOT / 'config' / 'courses.yaml').read_text(encoding='utf-8')) or {}
-    except (OSError, ValueError):
-        return {}
+    from config.features import courses_config      # {} when the student domain is off or the file is missing
+    return courses_config()
 
 
 def _data_dir() -> Path:

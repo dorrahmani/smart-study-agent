@@ -1,0 +1,17 @@
+# deploy/crontab.assistant.txt — setup path 1: the personal assistant only (SSA_STUDY=0). Times are UTC.
+# The WhatsApp worker (systemd: smart-study-wa-worker) does the live work — reminders, follow-ups, tasks, calendar
+# alerts, the morning message, proactive nudges. Cron only adds the housekeeping and the safety nets below.
+# Paths assume /home/ubuntu/smart_study_agent — change them if yours differ. Install: `crontab deploy/crontab.assistant.txt`.
+# Student domain later? Switch SSA_STUDY=1 and install deploy/crontab.txt instead (it is a superset).
+
+*/15 * * * * /home/ubuntu/smart_study_agent/venv/bin/python3 /home/ubuntu/smart_study_agent/scripts/cron_heartbeat.py >> /tmp/cron_heartbeat.log 2>&1
+*/5 * * * * /home/ubuntu/smart_study_agent/scripts/memory_watchdog.sh >> /tmp/memory_watchdog.log 2>&1
+0 */2 * * * /home/ubuntu/smart_study_agent/scripts/anti_idle.sh >> /tmp/anti_idle.log 2>&1
+0 13 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Budget Check" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/budget_check.py" >> /tmp/budget_check.log 2>&1
+0 4 * * * /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Drive Backup" /home/ubuntu/smart_study_agent/scripts/backup_to_drive.sh >> /tmp/backup.log 2>&1
+0 6 * * 0 /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "OAuth Health" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/oauth_health_check.py" >> /tmp/oauth_health.log 2>&1
+0 6 * * 6 /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Backup Verify" bash -c "cd /home/ubuntu/smart_study_agent && venv/bin/python3 scripts/verify_backup.py" >> /tmp/backup_verify.log 2>&1
+# Nightly security check (no LLM; alerts only on a NEW fail): 03:30 UTC
+30 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Security Check" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/security_check.py" >> /home/ubuntu/smart_study_agent/logs/security_check.log 2>&1
+# Self-improvement loop (agent/improve.py): adaptive cadence, at most 2 fixes a night, every one behind your ✅ and the test gate
+0 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Agent Review" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/agent_daily_review.py" >> /tmp/agent_review.log 2>&1

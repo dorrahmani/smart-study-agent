@@ -72,3 +72,15 @@ storage_state*.json
 .notebooklm/
 
 venv_wa/
+
+# ── more auth material that must never leave the machine ──
+*master_token*
+rclone.conf
+**/rclone.conf
+*storage_state*.json
+*client_secret*.json
+*service_account*.json
+*.p12
+*.sqlite3
+config/*.env
+.env.local

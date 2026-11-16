@@ -56,6 +56,26 @@ MENU = ('אני הסוכן שלך 👋 יש לי גישה ליומן גוגל ש
         '🛠️ "קלוד: …" — שינוי בבוט עצמו · 👎 אחרי תשובה לא טובה — אתקן · ⏸️ "עצור סוכן"')
 
 
+MENU_ASSISTANT = ('אני העוזר האישי שלך 👋 יש לי גישה ליומן גוגל שלך ולוואטסאפ. אפשר לכתוב או להקליט:\n'
+                  '📅 "תוסיף ליומן 21.10 טיול לצפון" (גם כמה אירועים בהודעה אחת) · "מה יש לי השבוע ביומן"\n'
+                  '⏰ "תזכיר לי מחר ב-9 …" · "כל יום ב-8 …" · "אילו תזכורות יש לי"\n'
+                  '📝 "תוסיף חלב לרשימת הקניות" · "מה ברשימת הקניות" · 🧠 "תזכור ש…" · ⏳ "מה מחכה לי"\n'
+                  '🤝 "תתאם עם יוסי פגישה בשבוע הבא" · "שלח הודעה לאמא ש…" (📇 שלח לי איש קשר כדי שאכיר)\n'
+                  '🔗 שלח קישור / קובץ / צילום — אקרא ואסכם · ☀️ "מה סיכום הבוקר"\n'
+                  '📋 "מה המשימות שלי היום / השבוע" · 🎯 "מה המטרות שלי" · "מטרה: להתאמן 4 פעמים בשבוע" · '
+                  '💼 "אני עובד בראשון 16-22" · 🔕 "תפסיק לשאול על זה"\n'
+                  '🛠️ "קלוד: …" — שינוי בבוט עצמו · 👎 אחרי תשובה לא טובה — אתקן · ⏸️ "עצור סוכן"')
+
+
+def menu() -> str:
+    """The help menu: with the student domain (config/features.py) or the secretary alone."""
+    try:
+        from config.features import study_enabled
+        return MENU if study_enabled() else MENU_ASSISTANT
+    except Exception:
+        return MENU_ASSISTANT
+
+
 @dataclass
 class In:
     sender: str
@@ -3156,7 +3176,7 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
         if tutor_outs is not None:
             return tutor_outs
         if CAPABILITIES.search(text) and not CAN_MSG_RX.match(text) and not _mind_on(msg):   # never let the RAG guess
-            return [Out('text', MENU + _hint(u))]
+            return [Out('text', menu() + _hint(u))]
         if THANKS.fullmatch(text):
             return [Out('text', 'בכיף 🙂' + _hint(u))]
         try:
@@ -3270,7 +3290,7 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
                 pass
         return _secretary(u, media, media.name.split('__', 1)[-1], q)
     if not text:
-        return [Out('text', MENU)]
+        return [Out('text', menu())]
     if u.get('quiz') and re.fullmatch(r'[אבגדabcd1-4]', text.lower().strip('.!? ')):
         return outs + _quiz_answer(msg, u, text)
     return outs + _text(msg, u, text) + _hint_out(u)
@@ -3571,8 +3591,24 @@ def _il_now() -> datetime:
     return datetime.now(ZoneInfo('Asia/Jerusalem')).replace(tzinfo=None)
 
 
+STUDY_ACTIONS = frozenset({'assignments', 'practice_set', 'mastery_map', 'mistakes', 'quiz_chat', 'course_summary',
+                           'file_send', 'list_summaries', 'no_class', 'list_no_class', 'topic_guide', 'exam_report',
+                           'coverage_map', 'coverage_check'})
+
+
+def _study_on() -> bool:
+    try:
+        from config.features import study_enabled
+        return study_enabled()
+    except Exception:
+        return False
+
+
 def run_intent(msg: In, u: dict, action: str, params: dict, text: str) -> list[Out]:
     from bot import handlers
+    if not _study_on() and action in STUDY_ACTIONS:      # assistant-only install: no courses, Moodle or summaries
+        from config.features import STUDY_OFF_TEXT
+        return [Out('text', STUDY_OFF_TEXT)]
     ck = _course(params)
     if action == 'greeting':
         if THANKS.search(text):
@@ -3581,7 +3617,7 @@ def run_intent(msg: In, u: dict, action: str, params: dict, text: str) -> list[O
             outs = _assistant(msg, u, text)
             if outs is not None:
                 return outs
-        return [Out('text', MENU)]
+        return [Out('text', menu())]
     if action == 'web_search' or (action in ('ask', 'greeting', 'chat', 'general', 'unknown', '') and WEB_RX.search(text)
                                    and not re.search(r'מבחן|ציון|סיכום|הרצאה', text)):
         from integrations.websearch import ask_web
@@ -3661,6 +3697,8 @@ def run_intent(msg: In, u: dict, action: str, params: dict, text: str) -> list[O
             return outs
         text = u.pop('_resolved', text)                # a study follow-up ("ומה עם הוכחה?") in full
         ck = ck or _course_in_text(text)
+    if not _study_on():                                # nothing to search in the summaries: say how to use me instead
+        return [Out('text', '🤔 לא בטוח שהבנתי. ' + menu())]
     return _study_answer(msg, text, ck)
 
 
@@ -3763,9 +3801,11 @@ def today_text() -> str:
 
 def my_courses_text() -> str:
     """This semester's courses + the owner's own timetable (config/courses.yaml my_sessions)."""
-    import yaml
+    from config.features import courses_config, study_enabled, STUDY_OFF_TEXT
+    if not study_enabled():
+        return STUDY_OFF_TEXT
     from config.paths import ACTIVE_COURSES, COURSE_NAMES
-    cfg = yaml.safe_load((ROOT / 'config' / 'courses.yaml').read_text(encoding='utf-8')) or {}
+    cfg = courses_config()
     courses = cfg.get('courses', cfg)
     start = ((cfg.get('settings') or {}).get('schedule') or {}).get('semester_start')
     lines = ['🎓 *הקורסים שלך בסמסטר הזה*' + (f' (מתחיל {start})' if start else '')]
@@ -4126,7 +4166,7 @@ def _button(msg: In, u: dict, st: dict | None = None) -> list[Out]:
             return _practice(item.get('course_key'), None, 6, homework=hw)
     if p.startswith('menu:'):
         return _text(msg, u, p.split(':', 1)[1])
-    return [Out('text', MENU)]
+    return [Out('text', menu())]
 
 
 # ── calendar writes + reminders (owner and partner) ──────────────────────────

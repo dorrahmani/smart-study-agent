@@ -1,0 +1,21 @@
+# Second net after the local pre-push hook: every push and pull request is scanned for the SHAPES of secrets
+# and personal data (scripts/release_scan.py). Any finding fails the run. Contains no personal values.
+name: release-scan
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pattern scan (fails on any finding)
+        run: python scripts/release_scan.py

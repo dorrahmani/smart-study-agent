@@ -884,16 +884,44 @@ def _client():
                         http_options=T.HttpOptions(timeout=int(MODEL_SECONDS * 1000)))
 
 
+# the student domain's tools (config/features.py): not offered at all in assistant-only mode (SSA_STUDY=0)
+STUDY_TOOLS = frozenset({'deadlines', 'obligations', 'quiz_reviews', 'timetable', 'mail', 'course_search', 'read_document',
+                         'lecture_notes', 'ask_notebook'})
+
+
+def active_tools() -> dict[str, dict]:
+    try:
+        from config.features import study_enabled
+        on = study_enabled()
+    except Exception:
+        on = False
+    return dict(TOOLS) if on else {n: t for n, t in TOOLS.items() if n not in STUDY_TOOLS}
+
+
+ASSISTANT_ONLY_NOTE = ("\n\nבהתקנה הזו תוסף הסטודנט כבוי (SSA_STUDY=0): אין קורסים, מודל, מייל אוניברסיטאי, סיכומים או מחברות. "
+                       "שאלה על לימודים → תגיד בקצרה שהתוסף כבוי ואפשר להפעיל אותו ב-.env. אל תמציא מידע על קורסים.")
+
+
+def system_prompt() -> str:
+    """SYSTEM, plus one line in assistant-only mode so the model doesn't promise course tools it doesn't have."""
+    try:
+        from config.features import study_enabled
+        on = study_enabled()
+    except Exception:
+        on = False
+    return SYSTEM if on else SYSTEM + ASSISTANT_ONLY_NOTE
+
+
 def declarations() -> list:
     from google.genai import types as T
-    fns = [T.FunctionDeclaration(name=n, description=t['d'], parameters=t['p']()) for n, t in TOOLS.items()]
+    fns = [T.FunctionDeclaration(name=n, description=t['d'], parameters=t['p']()) for n, t in active_tools().items()]
     fns.append(T.FunctionDeclaration(name='finish', description='סיום התור: התשובה למשתמש וכל מה שצריך לבצע או לזכור', parameters=_FINISH))
     return fns
 
 
 def run_tool(name: str, args: dict, turn: Turn) -> dict:
     """One tool call → the function response. Refusals are the tool's answer, so the model can go on."""
-    t = TOOLS.get(name)
+    t = active_tools().get(name)
     if not t:
         return {'error': f'אין כלי {name}'}
     if name in ALSO_TOOLS and turn.private:
@@ -940,7 +968,7 @@ def _ask_model(client, contents: list, last: bool, turn: Turn):
     from utils.usage_tracker import log_gemini
     allowed = ['finish'] if last else None
     cfg = T.GenerateContentConfig(
-        system_instruction=SYSTEM, temperature=0.3, max_output_tokens=2500,
+        system_instruction=system_prompt(), temperature=0.3, max_output_tokens=2500,
         thinking_config=T.ThinkingConfig(thinking_level=THINKING),
         tools=[T.Tool(function_declarations=declarations())],
         tool_config=T.ToolConfig(function_calling_config=T.FunctionCallingConfig(mode='ANY', allowed_function_names=allowed)))

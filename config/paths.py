@@ -90,7 +90,15 @@ COURSE_ORDER = list(COURSE_NAMES.keys())
 
 # Courses actively collected this semester (history stays in COURSE_NAMES).
 # This semester's course keys (must exist in config/courses.yaml). Override in .env: SSA_ACTIVE_COURSES=key1,key2
-ACTIVE_COURSES = [k.strip() for k in os.environ.get('SSA_ACTIVE_COURSES', 'probability,software_1,microeconomics_2,macroeconomics').split(',') if k.strip()]
+def _active_courses() -> list[str]:
+    from config.features import study_enabled      # assistant-only (SSA_STUDY=0): no courses at all
+    if not study_enabled():
+        return []
+    return [k.strip() for k in os.environ.get('SSA_ACTIVE_COURSES', 'probability,software_1,microeconomics_2,macroeconomics').split(',')
+            if k.strip()]
+
+
+ACTIVE_COURSES = _active_courses()
 # other names a course goes by (12/10: CS secretariat — 'תוכנה 1' is renamed 'מבוא להנדסת תוכנה' from 2026/1;
 # same course number). Matching by course_code (courses.yaml) comes first; these help searches and the chat.
 COURSE_ALT_NAMES = {'software_1': ['מבוא להנדסת תוכנה']}

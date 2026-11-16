@@ -5447,8 +5447,8 @@ def test_proactive_budget_never_repeats_caps_and_stays_off_by_default_03_11(tmp_
             os.environ.pop('SSA_PROACTIVE', None)
         else:
             os.environ['SSA_PROACTIVE'] = saved[1]
-    src = (ROOT / 'whatsapp' / 'worker.py').read_text(encoding='utf-8')
-    assert 'proactive_outs)' in src
+    from whatsapp import worker as _w                                 # the worker batch runs it (either domain mode)
+    assert _w.tick_list(_core)[-1] is _w.proactive_outs
 
 
 def test_proactive_study_nudge_every_other_day_not_every_morning_03_11():
@@ -13155,6 +13155,15 @@ def test_relevance_gate_mail_and_moodle_15_11(tmp_path):
         ur._CACHE.update(saved[0])
         ur.FILTERED, tau_mail.QUEUE = saved[1], saved[2]
 
+
+def test_assistant_only_install_runs_without_the_student_domain_16_11():
+    """16/11 setup path 1 (SSA_STUDY=0, no university login, no courses.yaml, no NotebookLM, no Gemini key): the secretary
+    answers, ticks and offers its tools without one study module — tests/test_assistant_only.py, in its own process."""
+    from tests import test_assistant_only as ao
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = ao.main()
+    assert rc == 0, buf.getvalue()[-2000:]
 
 if __name__ == '__main__':          # last line: the gate runs every test above
     sys.exit(main())

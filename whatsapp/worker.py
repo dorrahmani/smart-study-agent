@@ -276,6 +276,29 @@ def _one_tick(tick) -> list:
         return []
 
 
+def _study() -> bool:
+    """The student domain (config/features.py, SSA_STUDY). Off = assistant only: no review sessions, exams, timetable,
+    university mail or course-site ticks — the secretary ticks run either way."""
+    try:
+        from config.features import study_enabled
+        return study_enabled()
+    except Exception:
+        return False
+
+
+def tick_list(core) -> list:
+    """The periodic ticks of one batch, in their old order: the secretary's always, the student domain's only when on."""
+    ticks = [core.event_reminder_tick, core.exam_sync_prompts, core.exam_day_messages, core.timetable_tick, core.mail_tick,
+             core.morning_brief_tick, core.review_offer_tick, core.lesson_sync_tick, core.review_resume_tick,
+             core.homework_site_tick, core.learn_tick, core.loops_tick, core.office_hours_tick, core.tasks_tick]
+    if not _study():
+        study = {core.exam_sync_prompts, core.exam_day_messages, core.timetable_tick, core.mail_tick,
+                 core.review_offer_tick, core.lesson_sync_tick, core.review_resume_tick, core.homework_site_tick,
+                 core.loops_tick, core.office_hours_tick}
+        ticks = [x for x in ticks if x not in study]
+    return ticks + [proactive_outs]
+
+
 def proactive_outs() -> list:
     """03/11 (agent/proactive.py) — guarded on its own: a crash here must not drop the rest of the batch (the other
     ticks have already marked their messages as sent)."""
@@ -328,13 +351,13 @@ def main() -> int:
             print(f'  ⚠️ group tick failed: {e!r}'[:200])
         try:                                        # scheduled review sessions (agent/tutor.py)
             from agent import tutor, core as _core
-            for sess in tutor.due_sessions():
+            for sess in (tutor.due_sessions() if _study() else []):
                 send_outs_bridge(sess['chat'], _core.start_tutor(sess['chat'], sess['plan']))
         except Exception as e:
             print(f'  ⚠️ tutor schedule tick failed: {e}')
         try:                                        # idle review sessions: one nudge (05/11: only with SSA_STUDY_PUSH=1)
             from utils.notify import in_quiet_hours as _quiet
-            if time.time() - last_nudge > 300 and not _quiet():
+            if _study() and time.time() - last_nudge > 300 and not _quiet():
                 last_nudge = time.time()
                 from agent import core as _c2
                 for chat, text in _c2.tutor_nudges():
@@ -346,13 +369,8 @@ def main() -> int:
             if not _q2() and time.time() - last_exam > 60:      # cached data only — cheap, once a minute
                 last_exam = time.time()
                 from agent import core as _c3
-                batch = [x for tick in (_c3.event_reminder_tick, _c3.exam_sync_prompts, _c3.exam_day_messages,
-                                        _c3.timetable_tick, _c3.mail_tick, _c3.morning_brief_tick,
-                                        _c3.review_offer_tick, _c3.lesson_sync_tick, _c3.review_resume_tick,
-                                        _c3.homework_site_tick, _c3.learn_tick, _c3.loops_tick,
-                                        _c3.office_hours_tick, _c3.tasks_tick,
-                                        proactive_outs)          # 03/11 the noticing layer (agent/proactive.py, SSA_PROACTIVE=1)
-                         for x in _one_tick(tick)]
+                # 03/11 proactive_outs = the noticing layer (agent/proactive.py, SSA_PROACTIVE=1); study ticks only with SSA_STUDY
+                batch = [x for tick in tick_list(_c3) for x in _one_tick(tick)]
                 for chat, out in _c3.merge_outs(batch):     # one message per chat per tick, not a burst
                     # asked to be nagged: his tasks, and (14/11) what he owes in Moodle until done — the proactive cap
                     # (≤3 a day) still holds; the 7-day same-text rule would drop the every-2-days quiz reminder

@@ -1,0 +1,21 @@
+#!/bin/sh
+# deploy/git-hooks/pre-push — blocks a push when the release scan finds anything (secrets, tokens, phones,
+# e-mails, ids, forbidden files). Pattern-based only: it contains no personal values.
+# Install once per clone:  python scripts/install_git_hooks.py
+# Your own literal values (phone, e-mail, ID, server IP) are added from a file OUTSIDE the repo if it exists:
+#   ~/.config/ssa/private_values.txt  (one value per line)  — or set SSA_PRIVATE_VALUES=/path/to/file
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+PY="$ROOT/venv/bin/python"; [ -x "$PY" ] || PY="$ROOT/venv/Scripts/python.exe"; [ -x "$PY" ] || PY="$(command -v python3 || command -v python)"
+VALUES="${SSA_PRIVATE_VALUES:-$HOME/.config/ssa/private_values.txt}"
+if [ -f "$VALUES" ]; then
+  "$PY" "$ROOT/scripts/release_scan.py" --values "$VALUES"
+else
+  "$PY" "$ROOT/scripts/release_scan.py"
+fi
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo ""
+  echo "pre-push: release_scan found something — push blocked. Fix it (or rotate the secret if it was ever committed)."
+  exit 1
+fi
+exit 0

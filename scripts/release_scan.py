@@ -30,7 +30,8 @@ FORBIDDEN_FILES = [
     r'(^|/)config/(courses|professors)\.yaml$', r'(^|/)config/recipients[^/]*$', r'(^|/)config/notebooklm_notebooks\.json$',
     r'(^|/)config/(sent_log|approval_log|reviewer_sent_log|api_budget)\.json$', r'(^|/)config/[^/]*\.env$',
     r'(^|/)data/', r'(^|/)logs/', r'(^|/)backups/', r'\.bak$', r'\.sqlite3?$', r'\.db$',
-    r'\.(mp3|mp4|wav|m4a|ogg|srt|vtt)$',
+    r'\.(mp3|mp4|wav|m4a|ogg|srt|vtt)$', r'master_token', r'(^|/)rclone\.conf$', r'client_secret[^/]*\.json$',
+    r'service_account[^/]*\.json$',
 ]
 
 # ── content patterns ────────────────────────────────────────────────────────

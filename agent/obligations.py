@@ -259,8 +259,8 @@ REG_FOR_RX = re.compile(r'בחינ|מבחן|מועד')
 def _course_codes() -> dict[str, str]:
     """course number (my.tau) → course key, from config/courses.yaml."""
     try:
-        import yaml
-        cfg = yaml.safe_load((ROOT / 'config' / 'courses.yaml').read_text(encoding='utf-8'))
+        from config.features import courses_config
+        cfg = courses_config()
         cs = cfg.get('courses', cfg)
         return {str(v.get('course_code')).strip().zfill(8): k for k, v in cs.items()
                 if isinstance(v, dict) and v.get('course_code')}
