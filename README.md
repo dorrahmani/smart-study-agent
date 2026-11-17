@@ -122,6 +122,14 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 
 הכול, צעד אחרי צעד: [SETUP.md](SETUP.md).
 
+## ⚖️ שימוש אחראי
+
+- הפרויקט **לשימוש אישי** ומסופק **כמות שהוא, בלי שום אחריות**. כל מה שתריץ, אתה מריץ על אחריותך.
+- **וואטסאפ:** הגשר משתמש בספרייה לא רשמית (מכשיר מקושר). זה עלול לא להתאים לתנאי השימוש של וואטסאפ, והמספר עלול להיחסם. לכן מומלץ מספר נפרד.
+- **אוניברסיטה:** השתמש רק בחשבונות שלך, ובדוק שזה מותר לפי הכללים של המוסד שלך. הכלי לא נועד לעקוף גישה, לחלוק חומרי קורס עם מי שאין לו גישה אליהם, או לעשות משהו במקומך בבחינות ובמטלות שאסור לעזור בהן.
+- **מודל השפה** יכול לטעות. בדוק לפני שאתה סומך על תאריך, סכום או הגשה.
+- **פרטיות:** כל המידע נשאר אצלך, על השרת שלך. אל תעלה לגיטהאב את `.env`, את קבצי ההתחברות או את `data/`.
+
 ## מודל האבטחה
 
 - **שום דבר לא יוצא בלי ✅:** הודעה לאדם אחר, אירוע ביומן, הרשמה באתר. מילים בצ'אט לא נחשבות אישור, רק הכפתור.
@@ -193,6 +201,14 @@ Built and tested over a real semester at Tel Aviv University.
 ### Setup
 
 Two paths in [SETUP.md](SETUP.md) (Hebrew). **Path 1, assistant only**, needs a Gemini key, your WhatsApp number (linked device) and Google Calendar. **Path 2** adds Smart Study. `python scripts/setup_check.py` tells you what is missing, and `python -m tests.test_assistant_only` checks the minimal install.
+
+### ⚖️ Use responsibly
+
+- Personal use, provided **as is, without warranty**; you run it at your own risk.
+- **WhatsApp:** the bridge uses an unofficial library (a linked device). That may conflict with WhatsApp's terms and the number can be banned. Use a separate number.
+- **University:** use your own accounts only and check your institution's rules. It is not meant to bypass access, to share course material with people who do not have access, or to do work for you where outside help is not allowed.
+- The language model can be wrong: verify dates, amounts and submissions before relying on them.
+- **Privacy:** your data stays on your own server. Never commit `.env`, sign-in files or `data/`.
 
 ### Security model
 
