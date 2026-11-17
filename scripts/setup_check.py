@@ -28,7 +28,7 @@ OK, WARN, BAD = '✅', '⚠️ ', '❌'
 REQUIRED_ENV = {
     'GEMINI_API_KEY': 'https://aistudio.google.com/apikey (billing on + budget alert)',
     'WA_OWNER': 'YOUR WhatsApp number, digits only (9725XXXXXXXX) — the only one the bot obeys',
-    'WA_BOT_NUMBER': 'the number the bridge is linked to (a second SIM / eSIM is recommended)',
+    'WA_BOT_NUMBER': 'the number the bridge is linked to: a second SIM / eSIM, not WA_OWNER',
 }
 OPTIONAL_ENV = {
     'WA_OWNER_NAME': 'how the bot calls you',
@@ -171,7 +171,8 @@ def main() -> int:
     if key and not key.startswith('AIza'):
         print(f'{WARN} GEMINI_API_KEY does not look like a Google key (should start with AIza)')
     if env.get('WA_BOT_NUMBER') and env.get('WA_BOT_NUMBER') == env.get('WA_OWNER'):
-        print(f'{WARN} WA_BOT_NUMBER == WA_OWNER — works, but a separate number for the bot is safer (SETUP.md §A3)')
+        print(f'{BAD} WA_BOT_NUMBER == WA_OWNER — the bridge ignores messages from its own account, so the bot would '
+              'never hear you: the bot needs a second number (SIM / eSIM), SETUP.md §א3'); bad += 1
 
     if study:
         print('\n── .env: the student domain')

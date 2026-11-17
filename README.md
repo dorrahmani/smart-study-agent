@@ -12,7 +12,7 @@
 
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![LLM: Gemini only](https://img.shields.io/badge/LLM-Gemini%20only-4285F4) ![Self-hosted](https://img.shields.io/badge/self--hosted-your%20server-2ea44f) ![Every outward action behind ✅](https://img.shields.io/badge/outward%20actions-behind%20%E2%9C%85-orange)
 
-> **English below** · [SETUP.md](SETUP.md) · [SECURITY.md](SECURITY.md) · [CLAUDE.md](CLAUDE.md) — open this folder in Claude Code and say "help me set this up": it follows CLAUDE.md and walks you through, without ever touching your keys
+> **English below** · [SETUP.md](SETUP.md) · [FAQ](docs/FAQ.md) · [SECURITY.md](SECURITY.md) · [CLAUDE.md](CLAUDE.md) — open this folder in Claude Code and say "help me set this up": it follows CLAUDE.md and walks you through, without ever touching your keys
 
 <div dir="rtl">
 
@@ -107,7 +107,7 @@ flowchart LR
 
 | | מסלול | מה צריך |
 |---|---|---|
-| **א׳** | **רק העוזר** (בערך שעה) | מפתח Gemini, וואטסאפ עם המספר שלך (מכשיר מקושר), יומן גוגל |
+| **א׳** | **רק העוזר** (בערך שעה) | מפתח Gemini, מספר וואטסאפ נוסף לבוט (סים/eSIM, מכשיר מקושר) שאתה כותב לו מהמספר שלך, יומן גוגל |
 | **ב׳** | **+ Smart Study** (רשות, גם אחר כך) | התחברות לאוניברסיטה, `config/courses.yaml`, מודל ופנופטו, מייל, NotebookLM |
 
 </div>
@@ -122,7 +122,7 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 
 <div dir="rtl">
 
-הכול, צעד אחרי צעד: [SETUP.md](SETUP.md).
+הכול, צעד אחרי צעד: [SETUP.md](SETUP.md). שאלות נפוצות, טבלת תקלות ומילון משתנים: [docs/FAQ.md](docs/FAQ.md).
 
 ## ⚖️ שימוש אחראי
 
@@ -149,6 +149,7 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 | מה | בערך |
 |---|---|
 | העוזר, בשימוש יומיומי (Gemini) | עשרות סנטים עד דולר בחודש |
+| הודעות קוליות (OpenAI, רשות) | לפי דקת הקלטה, רק אם הוגדר `OPENAI_API_KEY` |
 | שרת Oracle Cloud Always Free | ‎$0 |
 | Smart Study: שיעור עם כתוביות / בלי | ‎$0.08 / ‎$0.40–0.50 |
 
@@ -163,7 +164,8 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 | `collectors/` · `generators/` · `pipelines/` | Smart Study: פנופטו, מודל, סיכומים, NotebookLM, אתר |
 | `deploy/` | systemd, ‏crontab (`crontab.assistant.txt` לעוזר בלבד), שער הפריסה, הקשחה, git hooks |
 | `tests/` | `test_safety_critical.py` (השער), `conversation_evals.py`, `test_assistant_only.py` |
-| `docs/RUNBOOK.md` | תקלות נפוצות ואיך מתקנים |
+| `docs/FAQ.md` | שאלות נפוצות, טבלת תקלות של `setup_check`, מילון משתני `.env`, מה העוזר יודע לעשות |
+| `docs/RUNBOOK.md` | תפעול שרת: תקלות ואיך מתקנים |
 
 </div>
 
@@ -202,7 +204,7 @@ Built and tested over a real semester at Tel Aviv University.
 
 ### Setup
 
-Two paths in [SETUP.md](SETUP.md) (Hebrew). **Path 1, assistant only**, needs a Gemini key, your WhatsApp number (linked device) and Google Calendar. **Path 2** adds Smart Study. `python scripts/setup_check.py` tells you what is missing, and `python -m tests.test_assistant_only` checks the minimal install.
+Two paths in [SETUP.md](SETUP.md) (Hebrew). **Path 1, assistant only**, needs a Gemini key, a second WhatsApp number for the bot (a linked device; you write to it from yours) and Google Calendar. Questions and errors: [docs/FAQ.md](docs/FAQ.md). **Path 2** adds Smart Study. `python scripts/setup_check.py` tells you what is missing, and `python -m tests.test_assistant_only` checks the minimal install.
 
 ### ⚖️ Use responsibly
 

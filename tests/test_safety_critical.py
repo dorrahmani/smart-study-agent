@@ -3273,12 +3273,13 @@ def test_group_setup_help_uses_the_project_notebook_not_the_brain():
     from agent import core, starter_help
     assert starter_help.RX.search('חבר_א מקבל שגיאה ב-Actions אחרי שהכניס secrets')
     assert starter_help.RX.search('איך יוצרים app password?') and not starter_help.RX.search('מה יש לי מחר?')
-    src = starter_help.sources({'README.md': 'r', 'SETUP_PROMPT.md': 's', 'src/ai.py': 'a', 'src/pdf.py': 'big',
-                                '.github/workflows/nightly.yml': 'w', 'tests/test_core.py': 't'})
-    assert set(src) == {'מדריך ופרומפט ההקמה', 'הגדרות ו-workflows', 'הקוד (src) והבדיקות', 'ניסיון מהמערכת של המשתמש'}
-    know = src['ניסיון מהמערכת של המשתמש']                    # the lessons — never personal data in a group
-    assert 'RECITATION' in know and not re.search(r'בת הזוג|@lid|972\d{6}|your-account|ישראלי', know)
-    assert '===== src/ai.py =====' in src['הקוד (src) והבדיקות'] and 'big' not in src['הקוד (src) והבדיקות']
+    src = starter_help.sources({'README.md': 'r', 'SETUP.md': 's', 'agent/mind.py': 'a', '.github/workflows/x.yml': 'w',
+                                'tests/test_core.py': '"""t"""\ndef test_a():\n    """checks a"""\n' + 'x = 1\n' * 3000})
+    assert list(src)[0].startswith('01') and '===== agent/mind.py =====' in src['03 agent: ליבת העוזר']
+    tests_src = [v for k, v in src.items() if k.startswith('12')][0]        # tests: names and docstrings only
+    assert 'checks a' in tests_src and 'x = 1' not in tests_src and len(src) <= 50
+    assert starter_help.classify('OFFTOPIC')[0] == 'offtopic' and starter_help.classify('אין לזה תשובה בפרויקט.')[0] == 'none'
+    assert starter_help.REPO == os.environ.get('SSA_STARTER_REPO', '').strip()   # empty by default: the feature is off
     asked, shots = [], []
     saved = (starter_help.ask, starter_help.screenshot, core._route)
     try:

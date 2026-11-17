@@ -6,7 +6,7 @@
 
 | מסלול | מה צריך | זמן |
 |---|---|---|
-| **א׳: רק העוזר** | מפתח Gemini, וואטסאפ עם המספר שלך, יומן גוגל | בערך שעה |
+| **א׳: רק העוזר** | מפתח Gemini, מספר וואטסאפ נוסף לבוט (סים/eSIM), יומן גוגל | בערך שעה |
 | **ב׳: + לימודים** (רשות, אפשר גם אחר כך) | התחברות לאוניברסיטה, `config/courses.yaml`, מודל ופנופטו, מייל, NotebookLM | עוד שעה-שעתיים |
 
 ---
@@ -43,12 +43,13 @@ python scripts/setup_check.py --init               # יוצר .env מהדוגמ�
 | `WA_BOT_NUMBER` | המספר שהגשר מקושר אליו (§א3) |
 | `WA_OWNER_NAME` | איך הבוט קורא לך |
 | `SSA_STUDY` | נשאר `0` במסלול הזה |
+| `OPENAI_API_KEY` (רשות) | רק אם רוצים שהבוט יבין **הודעות קוליות** (תמלול). בלי זה כותבים לו בטקסט |
 
 > ⚠️ את `.env` לא שולחים לאף אחד, לא מדביקים בצ'אט ולא מעלים ל-git. בשרת: `chmod 600 .env`.
 
 ## א3. וואטסאפ (המספר שלך)
 
-הבוט הוא **מכשיר מקושר** (כמו WhatsApp Web) של מספר וואטסאפ. מומלץ מאוד **מספר נפרד לבוט** (סים שני או eSIM זול). זו ספרייה לא רשמית (neonize), ואם מספר נחסם, עדיף שזה יהיה המספר של הבוט ולא שלך.
+הבוט הוא **מכשיר מקושר** (כמו WhatsApp Web) של מספר וואטסאפ (`WA_BOT_NUMBER`), ואתה כותב לו מהמספר שלך (`WA_OWNER`). צריך **מספר נפרד לבוט** (סים שני או eSIM זול): הגשר מתעלם מהודעות שנשלחות מהחשבון שהוא מקושר אליו, אז על אותו מספר הוא לא ישמע אותך. זו גם ספרייה לא רשמית (neonize), ואם מספר נחסם, עדיף שזה יהיה המספר של הבוט ולא שלך.
 
 1. ב-.env: `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER`.
 2. סביבה נפרדת לגשר, בכוונה בלי גישה ל-.env ולמפתחות:
@@ -181,9 +182,22 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only     # מסלול א׳
 
 ## מה עולה כסף, ואיך עוצרים
 
-- Gemini (הבוט, קריאת קבצים, סיכומים), OpenAI (תמלול בלבד, רק בתחום הלימודים). כל קריאה נרשמת ב-`data/usage.jsonl` ומוצגת בדשבורד.
+- Gemini (הבוט, קריאת קבצים, סיכומים), OpenAI (תמלול בלבד: הודעות קוליות לבוט, והרצאות בלי כתוביות בתחום הלימודים). כל קריאה נרשמת ב-`data/usage.jsonl` ומוצגת בדשבורד.
 - תקרה קשיחה ‎$50 לחודש (`utils/budget.py`): מעליה הכול נעצר (`data/budget_lock.json`) ומגיעה הודעה. בנוסף לזה יש תקרה יומית לשיחות (`SSA_BRAIN_DAY_CAP`).
 - לעצור את הבוט: `sudo systemctl stop smart-study-wa-worker`. לכבות את צינור הלימודים: `SMART_STUDY_DISABLE=1`. בלי תמלול בתשלום: `SMART_STUDY_DISABLE_WHISPER=1`.
+
+## עדכון לגרסה חדשה
+
+```bash
+git pull
+venv/bin/pip install -r requirements.txt          # בשרת: requirements.lock.txt
+PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
+sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
+```
+
+עם שער פריסה (`deploy/hooks/README.md`): מעדכנים במחשב ועושים `git push` לשרת, והשער מריץ את הבדיקות לפני שהקוד עולה.
+
+שאלות נפוצות וטבלת תקלות: [docs/FAQ.md](docs/FAQ.md).
 
 ## לפני שמעלים ל-GitHub
 
