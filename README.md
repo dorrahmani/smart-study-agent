@@ -10,7 +10,7 @@
 
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![LLM: Gemini only](https://img.shields.io/badge/LLM-Gemini%20only-4285F4) ![Self-hosted](https://img.shields.io/badge/self--hosted-your%20server-2ea44f) ![Every outward action behind ✅](https://img.shields.io/badge/outward%20actions-behind%20%E2%9C%85-orange)
 
-> **English below** · [SETUP.md](SETUP.md) · [SECURITY.md](SECURITY.md)
+> **English below** · [SETUP.md](SETUP.md) · [SECURITY.md](SECURITY.md) · [CLAUDE.md](CLAUDE.md) — open this folder in Claude Code and say "help me set this up": it follows CLAUDE.md and walks you through, without ever touching your keys
 
 <div dir="rtl">
 
