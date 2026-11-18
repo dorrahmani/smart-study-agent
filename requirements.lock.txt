@@ -4,7 +4,6 @@
 # Last refreshed: 2026-09-28 after the Python 3.10 -> 3.12 switch.
 altair==6.1.0
 annotated-types==0.7.0
-anthropic==0.104.0
 anyio==4.15.1
 attrs==26.1.0
 beautifulsoup4==4.14.3
