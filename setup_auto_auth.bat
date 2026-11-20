@@ -1,6 +1,6 @@
 @echo off
-:: setup_auto_auth.bat — רושם Task Scheduler להרצת auto_refresh_notebooklm.py כל 4 שעות.
-:: הרץ פעם אחת מ-PowerShell (כמשתמש רגיל, לא Admin):
+:: setup_auto_auth.bat — registers a Task Scheduler task that runs auto_refresh_notebooklm.py every 4 hours.
+:: Run once from PowerShell (as a regular user, not Admin):
 ::   .\setup_auto_auth.bat
 
 setlocal enabledelayedexpansion
@@ -9,7 +9,7 @@ set TASK_NAME=SmartStudy_NotebookLM_AuthRefresh
 set SCRIPT_DIR=%~dp0
 set PYTHON_SCRIPT=%SCRIPT_DIR%auto_refresh_notebooklm.py
 
-:: מצא python.exe
+:: Find python.exe
 where python >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] python לא נמצא ב-PATH
@@ -26,14 +26,14 @@ echo Script: %PYTHON_SCRIPT%
 echo Task:   %TASK_NAME%
 echo.
 
-:: מחק משימה קיימת (אם יש) ואל תשתק שגיאות
+:: Delete an existing task (if any) and do not silence errors
 schtasks /delete /tn "%TASK_NAME%" /f >nul 2>&1
 
-:: צור את המשימה:
-::   - כל 4 שעות, אחרי התחברות המשתמש
-::   - RepeatInterval PT4H (כל 4 שעות)
-::   - Duration P1D  (פועל 24 שעות ביום)
-::   - RunLevel HIGHEST = הרצה עם הרשאות משתמש מלאות (לא admin)
+:: Create the task:
+::   - every 4 hours, after the user logs in
+::   - RepeatInterval PT4H (every 4 hours)
+::   - Duration P1D  (runs 24 hours a day)
+::   - RunLevel HIGHEST = run with the user's full permissions (not admin)
 schtasks /create ^
     /tn "%TASK_NAME%" ^
     /tr "\"%PYTHON_EXE%\" \"%PYTHON_SCRIPT%\"" ^

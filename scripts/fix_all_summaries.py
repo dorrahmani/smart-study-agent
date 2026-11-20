@@ -1,5 +1,5 @@
 """
-fix_all_summaries.py — מוחק כל סיכום עם שגיאה ומסכם מחדש מה-cache.
+fix_all_summaries.py — deletes every summary with an error and re-summarizes from the cache.
 """
 import sys
 from pathlib import Path
@@ -16,7 +16,7 @@ load_dotenv(override=True)
 SUMMARIES_DIR = Path('data/summaries')
 ERROR_MARKERS = ['שגיאה ביצירת', 'לא ניתן להתחבר', 'אין מקורות זמינים']
 
-# מחק קבצים עם שגיאה
+# delete files with an error
 deleted = []
 for md in SUMMARIES_DIR.rglob('*.md'):
     try:
@@ -34,6 +34,6 @@ for md in SUMMARIES_DIR.rglob('*.md'):
 print(f'\n✅ נמחקו {len(deleted)} קבצים עם שגיאות')
 print('▶️  מריץ resummarize_from_cache...\n')
 
-# הרץ resummarize
+# run resummarize
 import importlib, runpy
 runpy.run_path('scripts/resummarize_from_cache.py', run_name='__main__')

@@ -1,5 +1,5 @@
 """
-parser.py — מחלץ נתונים מקבצי סיכום .md לדשבורד
+parser.py — extracts data from summary .md files for the dashboard
 """
 
 import re
@@ -48,7 +48,7 @@ def save_ratings(ratings: dict):
     save_json(RATINGS_PATH, ratings)
 
 def load_last_run() -> str:
-    """מחזיר מחרוזת זמן קריאה של הריצה האחרונה"""
+    """Returns a string with the last run's time, readable"""
     if not LAST_RUN_PATH.exists():
         return "לא רץ עדיין"
     try:
@@ -70,7 +70,7 @@ def _parse_sources(content: str) -> dict:
         return sources
     section = m.group(1)
 
-    # תמלול
+    # Transcript
     if 'הרצאה מוקלטת' in section or 'כתוביות' in section:
         if 'מקוריות' in section:
             sources['transcript'] = 'Panopto'
@@ -90,7 +90,7 @@ def _parse_sources(content: str) -> dict:
         else:
             sources['pdf'] = 'PDF'
 
-    # לוח — שני פורמטים: "X צילומי מסך" (ישן) או "board_frames": X (מ-add_board_reading)
+    # Board — two formats: "X צילומי מסך" (old) or "board_frames": X (from add_board_reading)
     bm = re.search(r'(\d+)\s*צילומי מסך', section)
     if bm:
         sources['board_frames'] = int(bm.group(1))
@@ -212,7 +212,7 @@ def _get_all_summaries_legacy() -> list:
         except Exception:
             continue
 
-        # תאריך + כותרת מהשם
+        # Date + title from the name
         stem = md_file.stem
         dm = re.match(r'^(\d{4}-\d{2}-\d{2})\s*-\s*(.+)$', stem)
         date  = dm.group(1) if dm else ''
@@ -240,7 +240,7 @@ def _get_all_summaries_legacy() -> list:
             'rating_key':      rating_key,
         })
 
-    # מיון: לפי קורס → תאריך → סוג
+    # Sort: by course → date → type
     course_order = {k: i for i, k in enumerate(COURSE_ORDER)}
     summaries.sort(key=lambda s: (
         course_order.get(s['course'], 99),

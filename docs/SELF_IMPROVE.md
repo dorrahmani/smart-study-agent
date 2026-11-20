@@ -5,10 +5,10 @@ Read this before every scout or fix job. The loop itself is `agent/improve.py`: 
 `claudeagent` (`agent/claude_job.py`).
 
 ## The rule: codify, don't tweak prompts
-The owner (19/11): "תעשה את זה בפייתון, שבפעם הבאה תדע לעשות את זה טוב יותר".
+The owner (19/11): "תעשה את זה בפייתון, שבפעם הבאה תדע לעשות את זה טוב יותר" ("do this in Python, so that next time you know how to do it better").
 
 Some task types keep coming back and each time cost several model rounds or tool calls. The precheck lists them
-under "חוזר ויקר" (`codify_candidates`, logged to `data/codify_log.jsonl`). It also lists web questions that the
+under "חוזר ויקר" ("recurring and expensive") (`codify_candidates`, logged to `data/codify_log.jsonl`). It also lists web questions that the
 Python search couldn't answer (`data/websearch_log.jsonl`, path `grounded`). Each one should become:
 
 1. **A deterministic Python tool**: a function that reads the stores or a free API and returns the answer or the

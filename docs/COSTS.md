@@ -1,10 +1,6 @@
 # Costs: staying around $15–30 a month
 
-<div dir="rtl">
-
-> **בקצרה:** עוזר אישי בלבד (בלי לימודים) עולה בערך $3–10 לחודש. עם שכבת הלימודים (סיכומי שיעורים, אתר קורס) בערך $15–30. השרת חינמי (Oracle Always Free). יש תקרה חודשית קשיחה: מעליה כל קריאה בתשלום נעצרת, והמערכת עוברת למצב חירום שעונה מהנתונים בלבד.
-
-</div>
+> **In short:** a personal assistant alone (no studies) costs about $3-10 a month. With the study layer (lecture summaries, a course site) about $15-30. The server is free (Oracle Always Free). There is a hard monthly cap: above it every paid call stops, and the system moves to emergency mode, which answers from the data only.
 
 Every price below is from the usage ledger of a real install (`data/usage_ledger.json`, the dashboard's cost page) in the autumn 2026 semester, on Gemini 2.5 Flash / Flash-Lite. The Google invoice was higher than the ledger until every call was logged with its thinking tokens, so **trust the invoice and set a Google Cloud budget alert** as well.
 
@@ -30,7 +26,7 @@ Transcription is the most expensive single item: a lecture without captions cost
 
 ### 2. Answer in code before asking a model
 - **Fast path** (`agent/fastpath.py`). "What do I have tomorrow", "when is the quiz", "what's waiting for me" are answered from the stores for $0 in under a second, instead of a ≈$0.015 mind turn.
-- **Deterministic handlers.** Buttons, "ביטלתי", "מה פספסתי", "תבטל את מה שעשית", and reminders with a clear time (`agent/hetime.py`) never reach a model.
+- **Deterministic handlers.** Buttons, "ביטלתי" (I cancelled), "מה פספסתי" (what did I miss), "תבטל את מה שעשית" (undo what you did), and reminders with a clear time (`agent/hetime.py`) never reach a model.
 - **Web in Python first** (`integrations/freeweb.py`). A plain search plus reading the page costs $0, or ≈$0.0005 with a Flash-Lite pass. The grounded search fallback (≈$0.04) runs only when that fails.
 - **Notebook first for course questions** (`agent/nlm_ask.py`). A course question goes to the course's NotebookLM notebook ($0) before any paid retrieval.
 

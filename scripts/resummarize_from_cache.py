@@ -1,7 +1,7 @@
 """
-resummarize_from_cache.py — מסכם מחדש הרצאות שיש להן SRT שמור אבל אין סיכום.
-שימוש: python scripts/resummarize_from_cache.py [course_key]
-        אם לא מצוין קורס — סורק את כל הקורסים.
+resummarize_from_cache.py — re-summarizes lectures that have a saved SRT but no summary.
+Usage: python scripts/resummarize_from_cache.py [course_key]
+        If no course is given — scans all the courses.
 """
 
 import sys
@@ -31,7 +31,7 @@ with open(CONFIG_PATH, encoding='utf-8') as f:
 
 target_course = sys.argv[1] if len(sys.argv) > 1 else None
 
-# אתחל סוכן בלי panopto login (לא צריך לאסוף מחדש)
+# initialize the agent without a panopto login (no need to collect again)
 class CacheAgent(SmartStudyAgent):
     def __init__(self, config_path):
         import yaml
@@ -66,7 +66,7 @@ for course_key, course_cfg in config['courses'].items():
     print(f'📚 {course_name} ({len(sessions)} sessions in cache)')
     print(f'{"="*60}')
 
-    # טען moodle items מ-cache
+    # load moodle items from the cache
     moodle_meta = Path(f'data/moodle/{course_key}_metadata.json')
     moodle_items = []
     if moodle_meta.exists():
@@ -75,7 +75,7 @@ for course_key, course_cfg in config['courses'].items():
         except Exception:
             pass
 
-    # הוסף static_pdf אם מוגדר
+    # add static_pdf if defined
     static_pdf = course_cfg.get('sources', {}).get('static_pdf')
     if static_pdf and Path(static_pdf).exists():
         moodle_items.append({
@@ -84,7 +84,7 @@ for course_key, course_cfg in config['courses'].items():
             'local_path': static_pdf,
         })
 
-    # מנה הרצאות ותרגולים בנפרד
+    # count lectures and tutorials separately
     lecture_index = 0
     tutorial_index = 0
 
@@ -116,7 +116,7 @@ for course_key, course_cfg in config['courses'].items():
 
         print(f'\n  🤖 מסכם ({item_type}): {title} ({date})')
 
-        # מצא PDF מתאים
+        # find a matching PDF
         matching_pdf, pdf_source_type = agent.match_pdf_to_video(
             title, moodle_items, session_index=current_index, item_type=item_type
         )

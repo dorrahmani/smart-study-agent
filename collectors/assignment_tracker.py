@@ -1,23 +1,23 @@
 """
-assignment_tracker.py — מושך מטלות + דדליינים מ-Moodle ומ-Wikidot.
+assignment_tracker.py — pulls assignments + deadlines from Moodle and Wikidot.
 
-מחזיר:
+Returns:
   [
     {
       course_key, course_name,
-      title,         ← שם המטלה
+      title,         ← assignment name
       due_date,      ← datetime | None
       days_left,     ← int | None
-      local_path,    ← str | None  ← קובץ שהורד
+      local_path,    ← str | None  ← downloaded file
       source,        ← "moodle" | "wikidot"
-      url,           ← קישור מקורי
+      url,           ← original link
     },
     ...
   ]
 
-ריצה:
+Usage:
     tracker = AssignmentTracker()
-    assignments = tracker.fetch_all()   ← מושך ומוריד הכל
+    assignments = tracker.fetch_all()   ← fetches and downloads everything
 """
 
 from __future__ import annotations
@@ -73,12 +73,12 @@ def _save_cache(data: dict):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_due_date(text: str) -> Optional[datetime]:
-    """מנסה לחלץ תאריך הגשה מטקסט."""
+    """Tries to extract a due date from text."""
     if not text:
         return None
     text = text.strip()
 
-    # פורמטים נפוצים ב-Moodle: "יום שני, 4 במאי 2026, 23:59"
+    # Common Moodle formats: "יום שני, 4 במאי 2026, 23:59"
     hebrew_months = {
         'בינואר': 1, 'בפברואר': 2, 'במרץ': 3, 'באפריל': 4,
         'במאי': 5, 'ביוני': 6, 'ביולי': 7, 'באוגוסט': 8,
@@ -94,7 +94,7 @@ def _parse_due_date(text: str) -> Optional[datetime]:
         if m:
             try:
                 day, year = int(m.group(1)), int(m.group(2))
-                # זמן: חפש HH:MM
+                # Time: look for HH:MM
                 t = re.search(r'(\d{1,2}):(\d{2})', text)
                 hour, minute = (int(t.group(1)), int(t.group(2))) if t else (23, 59)
                 return datetime(year, month_num, day, hour, minute)
@@ -120,8 +120,8 @@ def _days_left(due: Optional[datetime]) -> Optional[int]:
 
 def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path) -> list[dict]:
     """
-    מושך מטלות (mod/assign) מ-Moodle עם דדליינים דרך Playwright.
-    """
+    Pulls assignments (mod/assign) with their deadlines from Moodle via Playwright.
+"""
     import requests as _req
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
@@ -188,7 +188,7 @@ def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path)
             page.goto(f'{base_url}/course/view.php?id={course_id}')
             page.wait_for_load_state('networkidle', timeout=20000)
 
-            # מצא קישורי מטלות (mod/assign)
+            # Find assignment links (mod/assign)
             links = page.eval_on_selector_all(
                 'a[href*="/mod/assign/view.php"]',
                 'els => els.map(e => ({href: e.href, text: e.innerText.trim()}))'
@@ -200,13 +200,13 @@ def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path)
                 if not title or not href:
                     continue
 
-                # כנס לעמוד המטלה לחץ דדליין
+                # Open the assignment page, click the deadline
                 try:
                     page.goto(href, timeout=15000)
                     page.wait_for_load_state('networkidle', timeout=15000)
                     content = page.content()
 
-                    # חפש תאריך הגשה
+                    # Look for the due date
                     due_date = None
                     for pattern in [
                         r'מועד הגשה[^\d]*([^\n<]{5,40})',
@@ -219,7 +219,7 @@ def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path)
                             if due_date:
                                 break
 
-                    # הורד את קובץ המטלה אם יש
+                    # Download the assignment file if there is one
                     local_path = None
                     pdf_links = re.findall(r'href="([^"]+pluginfile[^"]+\.pdf)"', content)
                     if pdf_links:
@@ -238,7 +238,7 @@ def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path)
                         except Exception as e:
                             print(f'  ⚠️ שגיאה בהורדת {title}: {e}')
 
-                    # זהה סטטוס הגשה
+                    # Detect the submission status
                     submitted = False
                     submission_markers = [
                         'הגשתם', 'הוגש', 'הוגשה', 'submitted', 'submission submitted',
@@ -280,14 +280,14 @@ def _fetch_moodle_assignments(course_id: str, course_key: str, course_dir: Path)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Wikidot assignments (מדמ"ח)
+# Wikidot assignments (CS course)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir: Path) -> list[dict]:
     """
-    מושך מטלות (קבצי תרגיל) מ-Wikidot של מדמ"ח.
-    מחפש קישורי PDF/PY בטבלת תרגולים + חולץ תאריכי הגשה מהטקסט.
-    """
+    Pulls assignments (exercise files) from the CS course's Wikidot.
+    Looks for PDF/PY links in the tutorials table + extracts due dates from the text.
+"""
     import requests as _req
     from bs4 import BeautifulSoup
 
@@ -300,7 +300,7 @@ def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir
 
         base = recitations_url.split('/')[0] + '//' + recitations_url.split('/')[2]
 
-        # חפש שורות טבלה עם קישורים לקבצים
+        # Look for table rows with links to files
         rows = soup.find_all('tr')
         for row in rows:
             cells = row.find_all('td')
@@ -309,7 +309,7 @@ def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir
 
             row_text = row.get_text(' ', strip=True)
 
-            # חפש קישורים לקבצים
+            # Look for links to files
             for a in row.find_all('a', href=True):
                 href = a['href'].strip()
                 if href.startswith('/local--files/'):
@@ -327,7 +327,7 @@ def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir
                 if title.lower() in ('pdf', 'py', 'zip', ''):
                     title = Path(path_lower).stem
 
-                # חלץ תאריך הגשה מטקסט השורה
+                # Extract the due date from the row text
                 due_date = None
                 for pattern in [
                     r'הגשה[:\s]+([^\n,]{5,35})',
@@ -341,7 +341,7 @@ def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir
                         if due_date:
                             break
 
-                # הורד קובץ
+                # Download the file
                 local_path = None
                 try:
                     dr = _req.get(href, timeout=20)
@@ -363,7 +363,7 @@ def _fetch_wikidot_assignments(course_key: str, recitations_url: str, course_dir
                     'days_left': _days_left(due_date),
                     'local_path': local_path,
                     'source': 'wikidot',
-                    'submitted': False,   # Wikidot אין מנגנון הגשה — תמיד False
+                    'submitted': False,   # Wikidot has no submission mechanism — always False
                 })
 
     except Exception as e:
@@ -385,13 +385,13 @@ class AssignmentTracker:
 
     def fetch_all(self, force: bool = False) -> list[dict]:
         """
-        מושך מטלות מכל הקורסים.
-        משתמש ב-cache לשעה אחת (אלא אם force=True).
-        """
+        Pulls assignments from all courses.
+        Uses a one-hour cache (unless force=True).
+"""
         cache = _load_cache()
         now_ts = time.time()
 
-        # Cache TTL: שעה אחת
+        # Cache TTL: one hour
         if not force and cache.get('_ts') and (now_ts - cache['_ts']) < 3600:
             print('📋 מטלות נטענו מ-cache')
             return cache.get('assignments', [])
@@ -418,7 +418,7 @@ class AssignmentTracker:
                     item['course_name'] = course_name
                 all_assignments.extend(items)
 
-            # Wikidot (מדמ"ח)
+            # Wikidot (CS course)
             wikidot = sources.get('wikidot', {})
             if wikidot.get('enabled') and wikidot.get('recitations_url'):
                 items = _fetch_wikidot_assignments(
@@ -431,7 +431,7 @@ class AssignmentTracker:
                     item['course_name'] = course_name
                 all_assignments.extend(items)
 
-        # מיין לפי דדליין
+        # Sort by deadline
         def _sort_key(a):
             if a.get('due_date'):
                 return a['due_date']
@@ -439,12 +439,12 @@ class AssignmentTracker:
 
         all_assignments.sort(key=_sort_key)
 
-        # שמור cache
+        # Save the cache
         _save_cache({'_ts': now_ts, 'assignments': all_assignments})
         print(f'\n✅ סה"כ {len(all_assignments)} מטלות נמצאו')
         return all_assignments
 
     def fetch_cached(self) -> list[dict]:
-        """מחזיר cache קיים ללא בקשת רשת."""
+        """Returns the existing cache without a network request."""
         cache = _load_cache()
         return cache.get('assignments', [])

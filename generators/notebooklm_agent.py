@@ -1,12 +1,12 @@
 """
-NotebookLM Agent — מנהל אינטגרציה עם NotebookLM של גוגל.
+NotebookLM Agent — manages the integration with Google's NotebookLM.
 
-הספרייה (notebooklm-py) היא async-only, ולכן כל מתודה ציבורית כאן עוטפת
-async function ב-asyncio.run() כדי שניתן יהיה לקרוא מ-Streamlit (סינכרוני).
+The library (notebooklm-py) is async-only, so every public method here wraps an
+async function in asyncio.run() so that it can be called from Streamlit (synchronous).
 
-לפני השימוש הראשון:
+Before first use:
     pip install "notebooklm-py[browser]"
-    notebooklm login   # פותח דפדפן ומבצע OAuth של גוגל פעם אחת
+    notebooklm login   # opens a browser and performs the Google OAuth once
 """
 
 from __future__ import annotations
@@ -89,11 +89,11 @@ def _run(coro):
 
 class NotebookLMAgent:
     """
-    Agent ניהול NotebookLM. כל מתודה ציבורית סינכרונית ובולעת/יוצרת event loop.
-    דורש שהמשתמש הריץ `notebooklm login` פעם אחת מראש (storage_state.json נשמר ב-~/.notebooklm/).
-    """
+    NotebookLM management agent. Every public method is synchronous and swallows/creates an event loop.
+    Requires the user to have run `notebooklm login` once beforehand (storage_state.json is saved in ~/.notebooklm/).
+"""
 
-    # --- low-level: open client per call (תמיד "טרי") ---
+    # --- low-level: open a client per call (always "fresh") ---
 
     @staticmethod
     async def _open_client():
@@ -135,7 +135,7 @@ class NotebookLMAgent:
 
     @staticmethod
     def auth_age_hours() -> float:
-        """מחזיר כמה שעות עברו מאז חידוש ה-auth האחרון. inf אם לא נמצא."""
+        """Returns how many hours have passed since the last auth refresh. inf if not found."""
         try:
             import time
             try:                                   # 11/11 notebooklm-py 0.8.6 dropped DEFAULT_STORAGE_PATH
@@ -151,9 +151,9 @@ class NotebookLMAgent:
 
     def get_or_create_notebook(self, course_key: str, scope: str = "all") -> str:
         """
-        מחזיר notebook_id קיים לקורס+סקופ, או יוצר חדש ושומר באינדקס.
+        Returns the existing notebook_id for a course+scope, or creates a new one and saves it in the index.
         scope: "all" / "lectures_only" / "YYYY-MM-DD_to_YYYY-MM-DD"
-        """
+"""
         idx = _load_notebooks_index()
         existing = idx.get(course_key, {}).get(scope, {}).get("notebook_id")
         if existing:
@@ -188,19 +188,19 @@ class NotebookLMAgent:
     @staticmethod
     def _srt_to_plain_text(srt_path: str) -> str:
         """
-        ממיר קובץ SRT לטקסט נקי (ללא מספרי שורה וחותמות זמן).
-        פורמט SRT:
+        Converts an SRT file to clean text (without line numbers and timestamps).
+        SRT format:
             1
             00:00:01,000 --> 00:00:04,000
             Some dialogue here.
 
             2
             ...
-        """
+"""
         import re as _re
         text = Path(srt_path).read_text(encoding="utf-8", errors="replace")
-        # הסר שורות מספר (שורה שמכילה רק ספרה/ות)
-        # הסר שורות חותמת זמן (HH:MM:SS,mmm --> HH:MM:SS,mmm)
+        # Remove number lines (a line containing only digits)
+        # Remove timestamp lines (HH:MM:SS,mmm --> HH:MM:SS,mmm)
         lines = []
         ts_pattern = _re.compile(
             r"^\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3}"
@@ -226,11 +226,11 @@ class NotebookLMAgent:
         text_files: list[str] | None = None,
     ) -> dict:
         """
-        מוסיף PDFs ל-notebook אם לא הוספו עדיין.
-        SRT files מומרים לטקסט נקי ומועלים דרך add_text (NotebookLM לא תומך .srt).
-        text_files: קובצי .md (מצגות ממודל שכבר נקראו) מועלים כמו שהם דרך add_text.
-        מחזיר {added: [...], skipped: [...]}.
-        """
+        Adds PDFs to the notebook if they have not been added yet.
+        SRT files are converted to clean text and uploaded via add_text (NotebookLM does not support .srt).
+        text_files: .md files (presentations from the model that were already read) are uploaded as-is via add_text.
+        Returns {added: [...], skipped: [...]}.
+"""
         nb_id = self.get_or_create_notebook(course_key, scope)
         idx = _load_notebooks_index()
         entry = idx[course_key][scope]
@@ -380,7 +380,7 @@ class NotebookLMAgent:
         quantity: str = "ten_questions",
         difficulty: str = "medium",
     ) -> dict:
-        """מייצר חידון. מחזיר dict עם questions[]."""
+        """Generates a quiz. Returns a dict with questions[]."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "quizzes")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -409,7 +409,7 @@ class NotebookLMAgent:
         audio_format: str | None = None,
         audio_length: str | None = None,
     ) -> str:
-        """מייצר פודקאסט MP3. מחזיר path."""
+        """Generates an MP3 podcast. Returns a path."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "podcasts")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -432,7 +432,7 @@ class NotebookLMAgent:
         video_format: str | None = None,
         video_style: str | None = None,
     ) -> str:
-        """מייצר Video Overview. מחזיר path ל-MP4."""
+        """Generates a Video Overview. Returns a path to the MP4."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "videos")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -447,7 +447,7 @@ class NotebookLMAgent:
         return str(out_path)
 
     def generate_flashcards(self, course_key: str, scope: str) -> dict:
-        """מייצר כרטיסיות. מחזיר dict עם cards[]."""
+        """Generates flashcards. Returns a dict with cards[]."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "flashcards")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -468,7 +468,7 @@ class NotebookLMAgent:
         self, course_key: str, scope: str, language: str = "he",
         extra_instructions: str = "",
     ) -> str:
-        """מייצר מדריך לימוד. מחזיר path ל-MD/JSON."""
+        """Generates a study guide. Returns a path to the MD/JSON."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "study_guides")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -483,7 +483,7 @@ class NotebookLMAgent:
 
     def generate_faq(self, course_key: str, scope: str,
                      language: str = "he") -> str:
-        """מייצר FAQ של הקורס. מחזיר path ל-MD."""
+        """Generates the course FAQ. Returns a path to the MD."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "faqs")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -503,7 +503,7 @@ class NotebookLMAgent:
 
     def generate_timeline(self, course_key: str, scope: str,
                           language: str = "he") -> str:
-        """מייצר ציר זמן של נושאי הקורס. מחזיר path."""
+        """Generates a timeline of the course topics. Returns a path."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "timelines")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -523,7 +523,7 @@ class NotebookLMAgent:
 
     def generate_mindmap(self, course_key: str, scope: str,
                          language: str = "he") -> str:
-        """מייצר mindmap (Mermaid) של מושגי הקורס. מחזיר path."""
+        """Generates a mindmap (Mermaid) of the course concepts. Returns a path."""
         nb_id = self.get_or_create_notebook(course_key, scope)
         out_dir = _course_data_dir(course_key, "mindmaps")
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -582,12 +582,12 @@ class NotebookLMAgent:
             else:
                 raise ValueError(f"unknown kind: {kind}")
 
-            # timeout לפי סוג — כולם יכולים לקחת >10 דקות
+            # timeout by type — all of them can take >10 minutes
             _wait_timeout = {
-                "quiz":       600.0,   # 10 דקות
-                "audio":     1800.0,   # 30 דקות
-                "video":     3600.0,   # 60 דקות
-                "flashcards": 600.0,   # 10 דקות
+                "quiz":       600.0,   # 10 minutes
+                "audio":     1800.0,   # 30 minutes
+                "video":     3600.0,   # 60 minutes
+                "flashcards": 600.0,   # 10 minutes
             }.get(kind, 1200.0)
 
             task_id = getattr(status, "task_id", None) or getattr(status, "id", None)
@@ -597,12 +597,12 @@ class NotebookLMAgent:
                         notebook_id, task_id, timeout=_wait_timeout
                     )
                 except Exception as _wait_err:
-                    # NotebookLM עדיין עשוי לסיים — ננסה להוריד בכל זאת
+                    # NotebookLM may still finish — we'll try downloading anyway
                     try:
                         await downloader(notebook_id, out_path)
-                        return  # הורדה הצליחה למרות timeout
+                        return  # download succeeded despite the timeout
                     except Exception:
-                        pass  # הורדה נכשלה — נמשיך ונזרוק את שגיאת ה-wait
+                        pass  # download failed — we'll continue and raise the wait error
                     raise _wait_err
             await downloader(notebook_id, out_path)
 
@@ -627,7 +627,7 @@ class NotebookLMAgent:
             if task_id:
                 try:
                     await arts.wait_for_completion(
-                        notebook_id, task_id, timeout=1800.0  # 30 דקות
+                        notebook_id, task_id, timeout=1800.0  # 30 minutes
                     )
                 except Exception as _wait_err:
                     try:
@@ -642,15 +642,15 @@ class NotebookLMAgent:
 
     def list_notebook_artifacts(self, course_key: str, scope: str) -> list[dict]:
         """
-        מחזיר רשימת כל ה-artifacts הקיימים ב-notebook (מה שכבר נוצר בעבר).
-        כל פריט: {id, title, kind, status, created_at}
+        Returns a list of all artifacts that exist in the notebook (what was already created in the past).
+        Each item: {id, title, kind, status, created_at}
         status: 1=processing, 2=pending, 3=completed, 4=failed
-        """
+"""
         nb_id = self.get_or_create_notebook(course_key, scope)
         artifacts = _run(self._list_artifacts(nb_id))
         result = []
         for a in artifacts:
-            # str(a.kind) מחזיר "ArtifactType.AUDIO" — נרמל ל-"audio"
+            # str(a.kind) returns "ArtifactType.AUDIO" — normalized to "audio"
             raw_kind = str(a.kind)
             kind_str = raw_kind.split(".")[-1].lower() if "." in raw_kind else raw_kind.lower()
             result.append({
@@ -670,10 +670,10 @@ class NotebookLMAgent:
         self, course_key: str, scope: str, artifact_id: str, kind: str
     ) -> str:
         """
-        מוריד artifact קיים מ-NotebookLM לפי ID.
+        Downloads an existing artifact from NotebookLM by ID.
         kind: "audio" / "video" / "quiz" / "flashcards" / "report"
-        מחזיר path לקובץ שהורד.
-        """
+        Returns the path to the downloaded file.
+"""
         nb_id = self.get_or_create_notebook(course_key, scope)
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
@@ -695,9 +695,9 @@ class NotebookLMAgent:
         self, notebook_id: str, artifact_id: str, kind: str, out_path: str
     ):
         """
-        מוריד artifact לפי artifact_id ספציפי.
-        משתמש ב-API הרשמי של הספרייה עם artifact_id.
-        """
+        Downloads an artifact by a specific artifact_id.
+        Uses the library's official API with artifact_id.
+"""
         async with await self._open_client() as client:
             arts = client.artifacts
             if kind == "audio":
@@ -718,8 +718,8 @@ class NotebookLMAgent:
     def ask(self, course_key: str, scope: str, question: str,
             conversation_id: str | None = None) -> dict:
         """
-        שאלה חופשית. מחזיר {answer, conversation_id, references}.
-        """
+        Free-form question. Returns {answer, conversation_id, references}.
+"""
         nb_id = self.get_or_create_notebook(course_key, scope)
         result = _run(self._ask(nb_id, question, conversation_id))
 
@@ -747,7 +747,7 @@ class NotebookLMAgent:
 # ----- Helpers for dashboard ----------------------------------------------
 
 def list_summary_pdfs(course_key: str, kind: str = "lectures") -> list[str]:
-    """מחזיר את כל ה-PDFs של הרצאות/תרגולים שנוצרו לקורס."""
+    """Returns all the lecture/tutorial PDFs that were created for the course."""
     base = SUMMARIES_ROOT / course_key / kind
     if not base.exists():
         return []
@@ -837,7 +837,7 @@ _LECTURE_KEYWORDS  = ("הרצאה", "הרצאות", "lecture", "lec", "shiur")
 
 
 def _classify_srt(filename: str) -> str:
-    """מסווג קובץ SRT לפי שם: 'tutorial' או 'lecture'."""
+    """Classifies an SRT file by name: 'tutorial' or 'lecture'."""
     name_lower = filename.lower()
     # strip course prefix ({course_key}_...) before checking
     if "_" in name_lower:
@@ -859,9 +859,9 @@ def _srt_course(name: str, course_key: str) -> bool:
 
 def list_srt_files(course_key: str, kind: str = "all") -> list[str]:
     """
-    מחזיר SRT תמלולים לפי קורס מ-data/panopto/{course_key}_*.srt
+    Returns SRT transcripts by course from data/panopto/{course_key}_*.srt
     kind: "all" | "lectures" | "tutorials"
-    """
+"""
     panopto = ROOT / "data" / "panopto"
     if not panopto.exists():
         return []

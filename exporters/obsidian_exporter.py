@@ -1,18 +1,18 @@
 """
-obsidian_exporter.py — מייצא סיכומים, חידונים ומטלות ל-Obsidian Vault.
+obsidian_exporter.py — exports summaries, quizzes and assignments to the Obsidian Vault.
 
-מבנה ה-vault:
+Vault structure:
   📁 Smart Study Agent/
     📁 מיקרו כלכלה א'/
       📄 2026-04-26 - פתרון תרגיל 1.md
       📄 2026-04-26 - קבלת החלטות כלכליות.md
-      📄 _index.md          ← Dataview index לקורס
+      📄 _index.md          ← Dataview index for the course
     📁 מדמ"ח/
       ...
     📁 חידונים/
       📄 2026-04-26 - מיקרו - חידון.md
-    📄 🏠 בית.md            ← דף בית יפה עם כרטיסיות קורסים
-    📄 📅 מטלות.md           ← לוח מטלות
+    📄 🏠 בית.md            ← a nice home page with course cards
+    📄 📅 מטלות.md           ← assignments board
 """
 
 from __future__ import annotations
@@ -35,10 +35,10 @@ import yaml
 
 ROOT = Path(__file__).parent.parent
 
-# ── נתיב Vault — חולק עם config/paths.py כדי שכולם יסכימו על המיקום ─────────
-# סדר עדיפויות:
-#  1. OBSIDIAN_VAULT_PATH (env, תאימות לאחור)
-#  2. SMART_STUDY_VAULT   (env, אותו משתנה כמו config/paths.py)
+# ── Vault path — shared with config/paths.py so everyone agrees on the location ─────────
+# Order of priority:
+#  1. OBSIDIAN_VAULT_PATH (env, backward compatibility)
+#  2. SMART_STUDY_VAULT   (env, same variable as config/paths.py)
 #  3. ~/Documents/Obsidian Vault (default cross-platform)
 import os as _os
 _vault_env = _os.environ.get('OBSIDIAN_VAULT_PATH') or _os.environ.get('SMART_STUDY_VAULT')
@@ -46,19 +46,19 @@ if _vault_env:
     VAULT_ROOT = Path(_vault_env)
 else:
     VAULT_ROOT = Path.home() / 'Documents' / 'Obsidian Vault'
-STUDY_DIR = VAULT_ROOT / 'Smart Study Agent'   # תיקיית שורש בתוך ה-vault
+STUDY_DIR = VAULT_ROOT / 'Smart Study Agent'   # root folder inside the vault
 
 SUMMARIES_DIR = ROOT / 'data' / 'summaries'
 QUIZZES_DIR   = ROOT / 'data' / 'quizzes'
 
-# טעינת שמות קורסים
+# Loading course names
 with open(ROOT / 'config' / 'courses.yaml', encoding='utf-8') as _f:
     _cfg = yaml.safe_load(_f)
 COURSE_NAMES: dict[str, str] = {
     k: v.get('name', k) for k, v in _cfg.get('courses', {}).items()
 }
 
-# אימוג'ים לקורסים
+# Emojis for courses
 COURSE_EMOJI = {
     'microeconomics':   '📈',
     'linear_algebra_2': '🔢',
@@ -67,7 +67,7 @@ COURSE_EMOJI = {
     'intro_to_cs':      '💻',
 }
 
-# צבעי קורסים (לדף הבית)
+# Course colors (for the home page)
 COURSE_COLOR = {
     'microeconomics':   '#e8a838',
     'linear_algebra_2': '#5b8dee',
@@ -82,13 +82,13 @@ COURSE_COLOR = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _strip_metadata_block(md: str) -> str:
-    """מסיר בלוק מטא-דאטה (עלויות API, חומרים) מתחילת הסיכום."""
+    """Removes the metadata block (API costs, materials) from the beginning of the summary."""
     parts = re.split(r'\n---\n', md, maxsplit=1)
     return parts[1].lstrip('\n') if len(parts) == 2 else md
 
 
 def _frontmatter(data: dict) -> str:
-    """בונה YAML frontmatter לקובץ Obsidian."""
+    """Builds the YAML frontmatter for an Obsidian file."""
     lines = ['---']
     for k, v in data.items():
         if isinstance(v, list):
@@ -110,7 +110,7 @@ def _frontmatter(data: dict) -> str:
 
 
 def _safe_dirname(name: str) -> str:
-    """מסיר תווים לא חוקיים בשמות תיקיות Windows."""
+    """Removes characters that are illegal in Windows folder names."""
     return re.sub(r'[\\/:*?"<>|]', '', name).strip()
 
 
@@ -122,7 +122,7 @@ def _course_dir(course_key: str) -> Path:
 
 
 def _parse_date(stem: str) -> datetime | None:
-    """חולץ תאריך מ-stem של קובץ."""
+    """Extracts a date from a file's stem."""
     date_str = stem[:10]
     if date_str.count('-') == 2:
         try:
@@ -133,16 +133,16 @@ def _parse_date(stem: str) -> datetime | None:
 
 
 def _extract_topics(body: str) -> list[str]:
-    """חולץ כותרות ## ו-### מגוף הסיכום כנושאים."""
+    """Extracts ## and ### headings from the summary body as topics."""
     topics = []
     for line in body.splitlines():
         m = re.match(r'^#{2,3}\s+(.+)', line)
         if m:
             topic = m.group(1).strip()
-            # סנן כותרות גנריות מדי
+            # Filter out headings that are too generic
             if len(topic) > 3 and topic not in ('סיכום', 'מבוא', 'הקדמה', 'רקע', 'דוגמאות', 'תרגילים'):
                 topics.append(topic)
-    return topics[:8]  # מקסימום 8 נושאים
+    return topics[:8]  # maximum 8 topics
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -162,8 +162,8 @@ def _live_summaries(course_sum_dir: Path) -> list[Path]:
 
 def _build_all_stems(course_key: str) -> dict[str, dict]:
     """
-    בונה מפה של כל הסיכומים בקורס: stem → {date, type, topics, obsidian_stem}
-    """
+    Builds a map of all the summaries in a course: stem → {date, type, topics, obsidian_stem}
+"""
     result = {}
     course_sum_dir = SUMMARIES_DIR / course_key
     if not course_sum_dir.exists():
@@ -175,7 +175,7 @@ def _build_all_stems(course_key: str) -> dict[str, dict]:
         type_folder = md_file.parent.name   # "lectures" | "tutorials"
         kind = 'הרצאה' if type_folder == 'lectures' else 'תרגול'
 
-        # קרא את הגוף לחילוץ נושאים
+        # Read the body to extract topics
         try:
             content = md_file.read_text(encoding='utf-8', errors='replace')
             body = _strip_metadata_block(content)
@@ -195,10 +195,10 @@ def _build_all_stems(course_key: str) -> dict[str, dict]:
 
 def _find_related_notes(stem: str, all_stems: dict[str, dict]) -> list[str]:
     """
-    מוצא הרצאות/תרגולים קשורים:
-    1. אותו שבוע (±7 ימים), סוג שונה (הרצאה↔תרגול)
-    2. הרצאות/תרגולים סמוכים (±3 ימים) מאותו סוג
-    """
+    Finds related lectures/tutorials:
+    1. same week (±7 days), different type (lecture↔tutorial)
+    2. neighboring lectures/tutorials (±3 days) of the same type
+"""
     current = all_stems.get(stem)
     if not current or not current['date']:
         return []
@@ -213,20 +213,20 @@ def _find_related_notes(stem: str, all_stems: dict[str, dict]) -> list[str]:
 
         delta = abs((other['date'] - current_date).days)
 
-        # הרצאה ↔ תרגול באותו שבוע (עד 7 ימים הפרש)
+        # Lecture ↔ tutorial in the same week (up to 7 days apart)
         if other['type'] != current_type and delta <= 7:
             related.append(other_stem)
-        # אותו סוג, יום שלפני/אחרי (הרצאה כפולה / תרגול המשך)
+        # Same type, the day before/after (double lecture / follow-up tutorial)
         elif other['type'] == current_type and delta <= 3 and delta > 0:
             related.append(other_stem)
 
-    # מיין: קרובים יותר קודם
+    # Sort: closer first
     related.sort(key=lambda s: abs((all_stems[s]['date'] - current_date).days))
-    return related[:6]  # מקסימום 6 קישורים
+    return related[:6]  # maximum 6 links
 
 
 def _build_related_section(stem: str, all_stems: dict[str, dict], course_name: str) -> str:
-    """בונה סעיף 'ראה גם' עם wikilinks."""
+    """Builds a 'ראה גם' (see also) section with wikilinks."""
     related = _find_related_notes(stem, all_stems)
     if not related:
         return ''
@@ -243,10 +243,10 @@ def _build_related_section(stem: str, all_stems: dict[str, dict], course_name: s
 
 def _inject_topic_links(body: str, all_stems: dict[str, dict], current_stem: str, course_name: str) -> str:
     """
-    מוסיף wikilinks לנושאים שמוזכרים בגוף הסיכום ונמצאים בסיכומים אחרים.
-    מוסיף רק את ה-wikilink הראשון לכל נושא (ולא מתוך frontmatter).
-    """
-    # בנה מפה: נושא → stem שבו הוא מוגדר (כותרת ראשית)
+    Adds wikilinks to topics that are mentioned in the summary body and appear in other summaries.
+    Adds only the first wikilink for each topic (and not from the frontmatter).
+"""
+    # Build a map: topic → the stem where it is defined (main heading)
     topic_to_note: dict[str, str] = {}
     for other_stem, other in all_stems.items():
         if other_stem == current_stem:
@@ -258,13 +258,13 @@ def _inject_topic_links(body: str, all_stems: dict[str, dict], current_stem: str
     if not topic_to_note:
         return body
 
-    # הוסף wikilinks — רק הופעה ראשונה של כל נושא בגוף (לא בתוך כותרות)
+    # Add wikilinks — only the first occurrence of each topic in the body (not inside headings)
     lines = body.splitlines()
     already_linked: set[str] = set()
     result_lines = []
 
     for line in lines:
-        # אל תגע בכותרות ובשורות wikilink קיימות
+        # Don't touch headings and existing wikilink lines
         if line.startswith('#') or '[[' in line:
             result_lines.append(line)
             continue
@@ -273,7 +273,7 @@ def _inject_topic_links(body: str, all_stems: dict[str, dict], current_stem: str
         for topic, note_stem in topic_to_note.items():
             if topic in already_linked:
                 continue
-            # בדוק שהנושא מוזכר בשורה (מחוץ לקישורים קיימים)
+            # Check that the topic is mentioned in the line (outside existing links)
             if re.search(re.escape(topic), modified):
                 modified = modified.replace(topic, f'[[{note_stem}|{topic}]]', 1)
                 already_linked.add(topic)
@@ -319,21 +319,21 @@ def _detect_transcription_method(content: str) -> str | None:
 def export_summary(md_path: Path, course_key: str, all_stems: dict | None = None,
                    extra_fm: dict | None = None) -> Path:
     """
-    מייצא סיכום אחד ל-Obsidian.
-    מוסיף YAML frontmatter, wikilinks וסעיף "ראה גם".
+    Exports one summary to Obsidian.
+    Adds YAML frontmatter, wikilinks and a "ראה גם" (see also) section.
 
     extra_fm: extra frontmatter fields to merge in (e.g. weakness_score, sources_used, tokens).
-    """
+"""
     content = md_path.read_text(encoding='utf-8', errors='replace')
     from utils.other_group import keep, has as _og
     body    = keep(content, _strip_metadata_block(content))      # 14/11: "from another group" stays on top
 
-    # חלץ תאריך + כותרת מה-stem
+    # Extract the date + title from the stem
     stem = md_path.stem
     date_str = stem[:10] if stem[:10].count('-') == 2 else ''
     title    = stem[13:].strip() if date_str else stem
 
-    # זהה סוג
+    # Detect the type
     type_folder = md_path.parent.name   # "lectures" | "tutorials"
     kind = 'הרצאה' if type_folder == 'lectures' else 'תרגול'
 
@@ -344,8 +344,8 @@ def export_summary(md_path: Path, course_key: str, all_stems: dict | None = None
     related_section = ''
     if all_stems:
         related_section = _build_related_section(stem, all_stems, course_name)
-        # topic injection — רק בפסקאות, לא בכותרות
-        # body = _inject_topic_links(body, all_stems, stem, course_name)  # אפשרות — כרגע מכובה, יכולה לגרום ל-noise
+        # topic injection — only in paragraphs, not in headings
+        # body = _inject_topic_links(body, all_stems, stem, course_name)  # optional — currently disabled, can cause noise
 
     fm_data = {
         'title':       title,
@@ -408,14 +408,14 @@ def export_summary(md_path: Path, course_key: str, all_stems: dict | None = None
 
 
 def export_all_summaries(force: bool = False) -> int:
-    """מייצא את כל הסיכומים. מדלג על קיימים (אלא אם force=True)."""
+    """Exports all summaries. Skips existing ones (unless force=True)."""
     count = 0
     for course_key in COURSE_NAMES:
         course_sum_dir = SUMMARIES_DIR / course_key
         if not course_sum_dir.exists():
             continue
 
-        # בנה מפת stems לקורס זה (לצורך wikilinks)
+        # Build the stems map for this course (for wikilinks)
         all_stems = _build_all_stems(course_key)
 
         for md_file in _live_summaries(course_sum_dir):
@@ -436,7 +436,7 @@ def export_all_summaries(force: bool = False) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_quiz(json_path: Path, course_key: str) -> Path:
-    """ממיר חידון JSON לדף Obsidian עם toggle-style שאלות."""
+    """Converts a JSON quiz into an Obsidian page with toggle-style questions."""
     data    = json.loads(json_path.read_text(encoding='utf-8'))
     title   = data.get('title', 'חידון')
     qs      = data.get('questions', [])
@@ -518,7 +518,7 @@ def export_all_quizzes(force: bool = False) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_assignments() -> Path:
-    """מייצא מטלות + דדליינים לדף Obsidian עם calendar view."""
+    """Exports assignments + deadlines to an Obsidian page with a calendar view."""
     from collectors.assignment_tracker import _load_cache
     cache = _load_cache()
     assignments = cache.get('assignments', [])
@@ -535,12 +535,12 @@ def export_assignments() -> Path:
     out_lines.append('# 📅 לוח מטלות\n')
     out_lines.append(f'> עודכן: {today.strftime("%d/%m/%Y %H:%M")}\n')
 
-    # קבץ לפי קטגוריה
+    # Group by category
     overdue, urgent, upcoming, no_date = [], [], [], []
     submitted = []
 
     for a in assignments:
-        # מטלות שהוגשו — קטגוריה נפרדת
+        # Submitted assignments — a separate category
         if a.get('submitted'):
             submitted.append(a)
             continue
@@ -612,7 +612,7 @@ def export_assignments() -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def write_course_index(course_key: str) -> Path:
-    """כותב דף _index.md לקורס עם Dataview queries."""
+    """Writes a course's _index.md page with Dataview queries."""
     course_name = COURSE_NAMES.get(course_key, course_key)
     d = _course_dir(course_key)
     safe_name = _safe_dirname(course_name)
@@ -667,11 +667,11 @@ WHERE file.name = "📅 מטלות" AND course_key = "{course_key}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Home page — דף בית יפה
+# Home page — a nice home page
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _count_notes(course_key: str) -> tuple[int, int]:
-    """מחזיר (מספר הרצאות, מספר תרגולים) שיוצאו לvault."""
+    """Returns (number of lectures, number of tutorials) exported to the vault."""
     course_name = _safe_dirname(COURSE_NAMES.get(course_key, course_key))
     d = STUDY_DIR / course_name
     if not d.exists():
@@ -683,7 +683,7 @@ def _count_notes(course_key: str) -> tuple[int, int]:
 
 
 def _note_type(md_path: Path) -> str:
-    """קורא את ה-type מה-frontmatter של הדף."""
+    """Reads the page's type from its frontmatter."""
     try:
         txt = md_path.read_text(encoding='utf-8', errors='replace')
         m = re.search(r'^type:\s*(.+)$', txt, re.MULTILINE)
@@ -695,7 +695,7 @@ def _note_type(md_path: Path) -> str:
 
 
 def _last_updated(course_key: str) -> str:
-    """תאריך עדכון אחרון של קורס."""
+    """A course's last-updated date."""
     course_name = _safe_dirname(COURSE_NAMES.get(course_key, course_key))
     d = STUDY_DIR / course_name
     if not d.exists():
@@ -708,12 +708,12 @@ def _last_updated(course_key: str) -> str:
 
 
 def write_home_page() -> Path:
-    """כותב דף בית יפה עם כרטיסיות קורסים."""
+    """Writes a nice home page with course cards."""
     today_str = datetime.now().strftime('%d/%m/%Y')
     semester_start = datetime(2026, 4, 12)
     week_num = ((datetime.now() - semester_start).days // 7) + 1
 
-    # בנה כרטיסיות קורסים
+    # Build the course cards
     course_cards = []
     for course_key, course_name in COURSE_NAMES.items():
         emoji  = COURSE_EMOJI.get(course_key, '📚')
@@ -793,7 +793,7 @@ LIMIT 5
 # ─────────────────────────────────────────────────────────────────────────────
 
 def write_dashboard() -> Path:
-    """כותב דף 🏠 Dashboard.md עם Dataview ראשי."""
+    """Writes the 🏠 Dashboard.md page with the main Dataview."""
     content = f"""---
 title: Smart Study Agent Dashboard
 tags: [dashboard, smart-study-agent]
@@ -835,7 +835,7 @@ LIMIT 5
 # ─────────────────────────────────────────────────────────────────────────────
 
 def sync_all(force: bool = False) -> dict:
-    """מסנכרן הכל ל-Obsidian vault."""
+    """Syncs everything to the Obsidian vault."""
     print(f'\n🔄 מסנכרן ל-Obsidian: {VAULT_ROOT}')
     STUDY_DIR.mkdir(parents=True, exist_ok=True)
 

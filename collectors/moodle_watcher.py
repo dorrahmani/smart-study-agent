@@ -60,7 +60,7 @@ def sync(run_fetcher: bool = False, scrape_announcements: bool = True,
         'last_run': iso_str,
         'changes': [str],     # human-readable list for "🆕 חדש" UI
       }
-    """
+"""
     changes: list[str] = []
     last_seen = _load_last_seen()
 

@@ -56,7 +56,7 @@ Deleting it in a later commit does not remove it from history.
 - Hard monthly budget lock (`utils/budget.py`) plus a daily cap on conversations.
 - Assistant only (`SSA_STUDY=0`, the default): no university credentials, Moodle/Panopto session or NotebookLM
   login on the machine at all, and the model is not offered the course / university-mail tools.
-- Self-improvement / "קלוד: …" jobs run as an isolated user with an egress firewall (`deploy/claude_agent/`),
+- Self-improvement / "קלוד: …" ("Claude: …") jobs run as an isolated user with an egress firewall (`deploy/claude_agent/`),
   on a branch, through the full test gate, and deploy only after your ✅.
 - Server: SSH keys only, fail2ban, nightly `scripts/security_check.py`, test-gated deploy (`deploy/hooks/`).
 - University terms: your credentials are yours. Don't run this for someone else with their password.

@@ -1,4 +1,4 @@
-"""scripts/audit_summaries.py — מבדוק תקינות מלאה של מערכת הסיכומים."""
+"""scripts/audit_summaries.py — full integrity check of the summaries system."""
 from __future__ import annotations
 import os, sys, re, shutil
 from pathlib import Path

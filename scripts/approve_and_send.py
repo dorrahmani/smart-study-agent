@@ -1,12 +1,12 @@
 """
-approve_and_send.py — שולח סיכומים מאושרים לכל הנמענים
-מריץ אחרי שהמשתמש אישר את הסיכומים שנשלחו אליו לסקירה.
-שולח רק סיכומים שטרם נשלחו (עוקב באמצעות config/sent_log.json).
+approve_and_send.py — sends approved summaries to all recipients
+Runs after the user has approved the summaries that were sent to him for review.
+Sends only summaries that have not been sent yet (tracked via config/sent_log.json).
 
-שימוש:
-    python scripts/approve_and_send.py                    # שולח רק חדשים
-    python scripts/approve_and_send.py calculus_2         # רק קורס ספציפי
-    python scripts/approve_and_send.py calculus_2 "הרצאה 3"  # סיכום ספציפי
+Usage:
+    python scripts/approve_and_send.py                    # sends only new ones
+    python scripts/approve_and_send.py calculus_2         # only a specific course
+    python scripts/approve_and_send.py calculus_2 "הרצאה 3"  # a specific summary
 """
 import sys, os, json
 from pathlib import Path
@@ -39,7 +39,7 @@ recipients_full = json.loads(full_recipients_path.read_text(encoding='utf-8'))
 from config.paths import owner_email  # noqa: E402
 reviewer = (recipients_full.get('global') or [owner_email()])[0]
 
-# ── sent log — יומן שליחות ────────────────────────────────────────────────────
+# ── sent log ────────────────────────────────────────────────────────────────
 sent_log_path = Path('config/sent_log.json')
 if sent_log_path.exists():
     sent_log = json.loads(sent_log_path.read_text(encoding='utf-8'))
@@ -47,7 +47,7 @@ else:
     sent_log = {}
 
 def mark_sent(md_path: str):
-    """מסמן סיכום כנשלח ביומן"""
+    """Marks a summary as sent in the log"""
     sent_log[md_path] = datetime.now().isoformat()
     sent_log_path.write_text(json.dumps(sent_log, ensure_ascii=False, indent=2), encoding='utf-8')
 
@@ -97,7 +97,7 @@ for course_dir in sorted(summaries_dir.iterdir()):
 
             md_key = str(md_file).replace('\\', '/')
 
-            # דלג אם כבר נשלח
+            # skip if already sent
             if already_sent(md_key):
                 skipped_sent += 1
                 continue
@@ -107,7 +107,7 @@ for course_dir in sorted(summaries_dir.iterdir()):
             parts = stem.split(' - ', 1)
             title = parts[1] if len(parts) == 2 else stem
 
-            # דלג אם סיכום שגיאה
+            # skip if the summary is an error
             content = md_file.read_text(encoding='utf-8', errors='replace')
             if 'שגיאה ביצירת סיכום' in content or 'לא ניתן להתחבר ל-API' in content:
                 skipped_error += 1
@@ -148,7 +148,7 @@ for item in to_send:
     )
     if ok:
         success += 1
-        mark_sent(item['md_key'])  # רשום ביומן רק אחרי הצלחה
+        mark_sent(item['md_key'])  # record in the log only after success
         print(f"     ✅ נשלח!")
     else:
         print(f"     ❌ שגיאה בשליחה")

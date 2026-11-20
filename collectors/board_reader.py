@@ -1,6 +1,6 @@
 """
-Board Reader - קריאת תוכן לוח/מסך מוידאו הרצאה
-מחלץ frames, מסנן frames ללא שינוי, וקורא תוכן עם Gemini Vision.
+Board Reader - reads the board / screen content of a lecture video.
+Extracts frames, filters out unchanged frames, and reads the content with Gemini Vision.
 """
 
 import os
@@ -44,7 +44,7 @@ def _run(cmd: list, timeout: int = 120) -> subprocess.CompletedProcess:
 
 
 def _parse_hls_variant_url(hls_master_url: str) -> Optional[str]:
-    """מחזיר URL של הvariant הכי קטן (960x540) מתוך HLS master playlist."""
+    """Returns the URL of the smallest variant (960x540) from the HLS master playlist."""
     try:
         import re as _re
         import requests as _req
@@ -67,10 +67,10 @@ def _parse_hls_variant_url(hls_master_url: str) -> Optional[str]:
 
 def _parse_hls_segments(variant_url: str):
     """
-    מנתח index.panobf2 ומחזיר:
+    Parses index.panobf2 and returns:
       - init_url, init_range (offset, length)
-      - segments: list of (offset, length) — כל segment 9 שניות
-    """
+      - segments: list of (offset, length) — each segment is 9 seconds
+"""
     try:
         import re as _re
         import requests as _req
@@ -139,9 +139,9 @@ def _download_range(url: str, offset: int, length: int) -> bytes:
 def extract_frame_from_hls(hls_master_url: str, timestamp_sec: float,
                             output_path: str) -> bool:
     """
-    מחלץ frame מ-HLS Panopto על ידי הורדת byte range ספציפי.
-    עוקף את בעיית ה-.panobf1 extension ב-ffmpeg.
-    """
+    Extracts a frame from Panopto HLS by downloading a specific byte range.
+    Works around ffmpeg's .panobf1 extension problem.
+"""
     variant_url = _parse_hls_variant_url(hls_master_url)
     if not variant_url:
         return False
@@ -150,7 +150,7 @@ def extract_frame_from_hls(hls_master_url: str, timestamp_sec: float,
     if not segments:
         return False
 
-    # מצא את ה-segment הרלוונטי לפי timestamp
+    # Find the relevant segment by timestamp
     elapsed = 0.0
     seg_idx = 0
     for i, (off, ln, dur) in enumerate(segments):
@@ -164,12 +164,12 @@ def extract_frame_from_hls(hls_master_url: str, timestamp_sec: float,
     frag_url = variant_url.rsplit('/', 1)[0] + '/fragmented.panobf1'
 
     try:
-        # הורד init + segment
+        # Download init + segment
         init_bytes = _download_range(frag_url, init_offset, init_len) if init_url else b''
         seg_bytes = _download_range(frag_url, seg_off, seg_len)
         fmp4_data = init_bytes + seg_bytes
 
-        # הזרם ל-ffmpeg דרך stdin
+        # Stream to ffmpeg via stdin
         seek_in_seg = timestamp_sec - elapsed
         cmd = [
             FFMPEG_PATH, '-y',
@@ -201,7 +201,7 @@ def extract_frame_from_hls(hls_master_url: str, timestamp_sec: float,
 
 
 def get_hls_duration(hls_master_url: str) -> float:
-    """מחשב משך וידאו HLS על ידי סכימת כל ה-segments."""
+    """Computes the HLS video duration by summing all the segments."""
     variant_url = _parse_hls_variant_url(hls_master_url)
     if not variant_url:
         return 0.0

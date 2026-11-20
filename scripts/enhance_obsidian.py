@@ -1,16 +1,16 @@
 """
 scripts/enhance_obsidian.py
 ===========================
-משדרג את הוולט ל-7 תחומים:
-  1. graph.json — צבעי קבוצות, MOC זהוב, מושגים סגול, חולשות אדומות
-  2. _index.md לכל קורס — MOC עשיר עם בר התקדמות + 5 מושגים מובילים + מטלות פתוחות
-  3. 🏠 בית.md — דשבורד עם "מה חדש" + מטלות + ציונים + מושגים פעילים
-  4. 🌉 גשרים.md — hub למושגים שמופיעים ביותר מקורס אחד
-  5. מושגים/_ALL.md — אינדקס מלא של כל המושגים ממוין לפי כמות references
-  6. שבועות — רענון של weekly digests עם נתונים מלאים
-  7. concept duplicates report — דו"ח טקסט עם הצעות מיזוג ידני
+Upgrades the vault in 7 areas:
+  1. graph.json — group colors, golden MOC, purple concepts, red weak spots
+  2. _index.md for each course — a rich MOC with a progress bar + 5 top concepts + open assignments
+  3. 🏠 בית.md — a dashboard with "what's new" + assignments + grades + active concepts
+  4. 🌉 גשרים.md — a hub for concepts that appear in more than one course
+  5. מושגים/_ALL.md — a full index of all concepts sorted by number of references
+  6. weeks — refresh of the weekly digests with full data
+  7. concept duplicates report — a text report with manual merge suggestions
 
-הכל idempotent — אפשר להריץ שוב ושוב בלי לשבור כלום.
+Everything is idempotent — can be re-run again and again without breaking anything.
 """
 import sys, os, re, json, yaml
 from datetime import datetime, date, timedelta
@@ -29,7 +29,7 @@ STUDY = VAULT_ROOT / 'Smart Study Agent'
 CONCEPTS_DIR = STUDY / 'מושגים'
 WEEKS_DIR = STUDY / '📅 שבועות'
 
-# קונפיג קורסים — מהקובץ הראשי
+# course config — from the main file
 config = yaml.safe_load(open('config/courses.yaml', encoding='utf-8').read())
 courses_cfg = config.get('courses', config)
 
@@ -92,23 +92,23 @@ def enhance_graph_json():
         return
     g = json.loads(gp.read_text(encoding='utf-8'))
 
-    # קבוצות צבע — סדר הופך עדיפות (עליונים מנצחים)
+    # color groups — order reverses priority (the top ones win)
     color_groups = [
-        # MOCs (עדיפות עליונה — צבע זהב, גדול)
+        # MOCs (top priority — gold color, large)
         {'query': 'path:"_index" OR path:"🏠"', 'color': {'a': 1.0, 'rgb': hex_to_int('#FFD700')}},
-        # חולשות (אדום בולט)
+        # weak spots (prominent red)
         {'query': 'tag:#weakness', 'color': {'a': 1.0, 'rgb': hex_to_int('#E53935')}},
-        # מושגים (סגול)
+        # concepts (purple)
         {'query': 'path:"מושגים/"', 'color': {'a': 1.0, 'rgb': hex_to_int('#8E24AA')}},
-        # שבועות (טורקיז)
+        # weeks (turquoise)
         {'query': 'path:"שבועות/"', 'color': {'a': 1.0, 'rgb': hex_to_int('#26C6DA')}},
-        # NotebookLM artifacts (כתום בהיר)
+        # NotebookLM artifacts (light orange)
         {'query': 'path:"NotebookLM/"', 'color': {'a': 1.0, 'rgb': hex_to_int('#FFB74D')}},
-        # מטלות (חום)
+        # assignments (brown)
         {'query': 'path:"מטלות"', 'color': {'a': 1.0, 'rgb': hex_to_int('#8D6E63')}},
-        # הודעות (אפור)
+        # announcements (gray)
         {'query': 'path:"הודעות"', 'color': {'a': 1.0, 'rgb': hex_to_int('#9E9E9E')}},
-        # קורסים — סדר ידוע
+        # courses — known order
         {'query': 'tag:#intro_to_cs',      'color': {'a': 1.0, 'rgb': hex_to_int(COURSE_COLOR_HEX['intro_to_cs'])}},
         {'query': 'tag:#calculus_2',       'color': {'a': 1.0, 'rgb': hex_to_int(COURSE_COLOR_HEX['calculus_2'])}},
         {'query': 'tag:#discrete_math_2',  'color': {'a': 1.0, 'rgb': hex_to_int(COURSE_COLOR_HEX['discrete_math_2'])}},
@@ -117,17 +117,17 @@ def enhance_graph_json():
     ]
     g['colorGroups'] = color_groups
 
-    # תצוגה — ברירות מחדל טובות
+    # display — good defaults
     g.setdefault('showOrphans', True)
     g['showAttachments'] = False
     g['hideUnresolved'] = False
     g['showTags'] = False
-    # פיזיקה — קצת יותר רך
+    # physics — a bit softer
     g['centerStrength'] = 0.5
     g['repelStrength'] = 12
     g['linkStrength'] = 1.0
     g['linkDistance'] = 200
-    # גודל צמתים — לפי דרגה
+    # node size — by degree
     g['scale'] = 1.0
     g['close'] = True
 
@@ -384,11 +384,11 @@ def build_home_dashboard():
             continue
         course_name = courses_cfg[ck]['name']
         emoji = COURSE_EMOJI[ck]
-        # ספירת קבצים
+        # count files
         notes = list(course_dir.glob('*.md'))
         n_lect = sum(1 for n in notes if 'הרצאה' in n.stem.lower() or 'lecture' in n.stem.lower())
         n_tut  = sum(1 for n in notes if 'תרגול' in n.stem.lower() or 'תרגיל' in n.stem.lower())
-        # תאריך עדכון אחרון
+        # last update date
         if notes:
             last = max(n.stat().st_mtime for n in notes)
             last_str = datetime.fromtimestamp(last).strftime('%d/%m/%Y')
@@ -427,8 +427,8 @@ def build_concept_bridges():
         print('  ⚠️  אין תיקיית מושגים')
         return
 
-    # זיהוי גשרים אמיתיים: לאיזה מושג יש קישור (wikilink או concepts: בfrontmatter)
-    # מהרצאות ב-2+ תיקיות קורסים?
+    # identify real bridges: which concept has a link (wikilink or concepts: in the frontmatter)
+    # from lectures in 2+ course folders?
     concept_to_courses = defaultdict(set)  # stem → {course_keys}
     stems = {f.stem for f in CONCEPTS_DIR.glob('*.md') if not f.stem.startswith('_')}
 
@@ -441,17 +441,17 @@ def build_concept_bridges():
             continue
         for note in course_dir.rglob('*.md'):
             fm, body = read_fm(note)
-            # 1. wikilinks בגוף
+            # 1. wikilinks in the body
             for match in link_re.findall(body):
                 target = match.strip().split('/')[-1]
                 if target in stems:
                     concept_to_courses[target].add(ck)
-            # 2. concepts: בfrontmatter
+            # 2. concepts: in the frontmatter
             for c in (fm.get('concepts') or []):
                 if isinstance(c, str) and c.strip() in stems:
                     concept_to_courses[c.strip()].add(ck)
 
-    # bridges = מושגים שיש להם קישורים מ-2+ קורסים
+    # bridges = concepts that have links from 2+ courses
     bridges = []
     for stem, courses_set in concept_to_courses.items():
         if len(courses_set) >= 2:
@@ -462,7 +462,7 @@ def build_concept_bridges():
             })
     bridges.sort(key=lambda b: (-b['n_courses'], b['stem']))
 
-    # סדר לפי כמות קורסים
+    # sort by number of courses
     bridges.sort(key=lambda b: -len(b['courses']))
 
     lines = [
@@ -536,7 +536,7 @@ def build_concept_index():
         '## רשימה אלפבתית',
         '',
     ]
-    # קבץ לפי אות ראשונה (מספר/אות)
+    # group by first letter (digit/letter)
     by_letter = defaultdict(list)
     for f in files:
         first = f.stem[0].upper() if f.stem else '?'
@@ -562,19 +562,19 @@ def detect_concept_duplicates():
         return
     files = [f for f in CONCEPTS_DIR.glob('*.md') if not f.stem.startswith('_')]
 
-    # קריטריון 1: שמות שנגישים בהסרת suffix
+    # criterion 1: names that match after stripping the suffix
     base_to = defaultdict(list)
     for f in files:
         base = re.sub(r'__\w+$', '', f.stem.lower())
         base_to[base].append(f.stem)
 
-    # קריטריון 2: מילה אחת מהשני (substring)
+    # criterion 2: one word from the other (substring)
     likely_dups = []
     stems = [f.stem for f in files]
     for i, a in enumerate(stems):
         for b in stems[i+1:]:
             la, lb = a.lower(), b.lower()
-            # אם אחד substring של השני וההפרש קטן
+            # if one is a substring of the other and the difference is small
             if la != lb and (la in lb or lb in la):
                 if abs(len(la) - len(lb)) < 12:
                     likely_dups.append((a, b))
@@ -687,16 +687,16 @@ def enrich_weekly_digests():
     print('\n[7/7] 📅 מרענן weekly digests...')
     WEEKS_DIR.mkdir(exist_ok=True)
     today = date.today()
-    # 12 שבועות אחורה
+    # 12 weeks back
     enriched = 0
     for weeks_back in range(12):
         target = today - timedelta(weeks=weeks_back)
         iso_year, iso_week, _ = target.isocalendar()
-        # מצא יום שני של אותו שבוע
+        # find the Monday of that week
         monday = target - timedelta(days=target.weekday())
         sunday = monday + timedelta(days=6)
         path = WEEKS_DIR / f'{iso_year}-W{iso_week:02d}.md'
-        # רק אם הקובץ קצר (פחות מ-1KB) או לא קיים — נחליף
+        # only if the file is short (under 1KB) or missing — we replace it
         if path.exists() and path.stat().st_size > 1500:
             continue
         content = WEEKLY_TEMPLATE.format(
@@ -718,10 +718,10 @@ CONCEPT_BLOCK_TAIL = '<!-- AUTO-CONCEPTS:END -->'
 
 def inject_concept_wikilinks_into_lectures():
     """
-    בכל הערה שיש לה concepts: בfrontmatter — מוסיף בסוף הקובץ
-    בלוק מסומן עם wikilinks מפורשים. הופך את הגרף לצפוף ולמושגים
-    לניתנים לניווט. idempotent — מחליף בלוק קיים.
-    """
+    In every note that has concepts: in the frontmatter — appends at the end of the file
+    a marked block with explicit wikilinks. Makes the graph dense and the concepts
+    navigable. idempotent — replaces an existing block.
+"""
     print('\n[8/8] 🔗 מזריק wikilinks למושגים בגוף הערות...')
     stems = {f.stem for f in CONCEPTS_DIR.glob('*.md') if not f.stem.startswith('_')}
     n_updated = 0
@@ -738,19 +738,19 @@ def inject_concept_wikilinks_into_lectures():
             except Exception:
                 continue
             fm, _ = read_fm(text) if text.startswith('---') else (None, None)
-            # אופציה: read_fm מחזיר tuple — נשתמש בparser שלי
+            # option: read_fm returns a tuple — we'll use my own parser
             fm, body = read_fm(note)
             concepts = [c for c in (fm.get('concepts') or []) if isinstance(c, str) and c.strip() in stems]
             if not concepts:
                 continue
-            # בנה את הבלוק
+            # build the block
             block = [CONCEPT_BLOCK_HEAD,
                      '## 🧠 מושגים מרכזיים',
                      '',
                      ' · '.join(f'[[{c.strip()}]]' for c in concepts),
                      CONCEPT_BLOCK_TAIL]
             block_text = '\n'.join(block)
-            # החלף בלוק קיים או הוסף בסוף
+            # replace the existing block or append at the end
             full = note.read_text(encoding='utf-8')
             if CONCEPT_BLOCK_HEAD in full:
                 pat = re.compile(re.escape(CONCEPT_BLOCK_HEAD) + r'.*?' + re.escape(CONCEPT_BLOCK_TAIL),
@@ -770,7 +770,7 @@ def main():
         print('❌ Vault not found')
         return
 
-    # Load NotebookLM IDs (להזרים לתוך MOCs)
+    # Load NotebookLM IDs (to feed into the MOCs)
     nlm_path = Path('config/notebooklm_notebooks.json')
     notebook_ids = {}
     if nlm_path.exists():
@@ -779,7 +779,7 @@ def main():
     enhance_graph_json()
     build_course_mocs(notebook_ids)
     build_home_dashboard()
-    inject_concept_wikilinks_into_lectures()   # קודם — כדי שיש wikilinks לגלות
+    inject_concept_wikilinks_into_lectures()   # first — so that there are wikilinks to discover
     build_concept_bridges()
     build_concept_index()
     detect_concept_duplicates()

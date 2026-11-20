@@ -1,219 +1,221 @@
-# 🛠️ הקמה, צעד אחרי צעד
+# 🛠️ Setup, step by step
 
-הדרך הקלה: לפתוח את Claude Code (או עוזר קוד אחר) בתיקייה, ולבקש: "תקרא את README.md ואת SETUP.md ותעבור איתי על ההקמה צעד אחרי צעד, מסלול א׳. את הסיסמאות והמפתחות אני מקליד בעצמי ב-.env, לא בצ'אט."
+The easy way: open Claude Code (or another coding assistant) in the folder and ask: "Read README.md and SETUP.md and walk me through the setup step by step, path A. I type the passwords and keys myself in .env, not in the chat."
 
-אפשר גם לבד. אחרי כל שלב: `python scripts/setup_check.py`. הוא יודע באיזה מסלול אתה (`SSA_STUDY`) ובודק רק את מה שצריך בו.
+You can also do it on your own. After every step run `python scripts/setup_check.py`. It knows which path you are on (`SSA_STUDY`) and checks only what that path needs.
 
-| מסלול | מה צריך | זמן |
+| Path | What you need | Time |
 |---|---|---|
-| **א׳: רק העוזר** | מפתח Gemini, מספר וואטסאפ נוסף לבוט (סים/eSIM), יומן גוגל | בערך שעה |
-| **ב׳: + לימודים** (רשות, אפשר גם אחר כך) | התחברות לאוניברסיטה, `config/courses.yaml`, מודל ופנופטו, מייל, NotebookLM | עוד שעה-שעתיים |
+| **A: the assistant only** | A Gemini key, an extra WhatsApp number for the bot (SIM/eSIM), Google Calendar | About an hour |
+| **B: + studies** (optional, can be added later) | University login, `config/courses.yaml`, Moodle and Panopto, email, NotebookLM | One to two more hours |
 
 ---
 
-## 0. איפה זה ירוץ
+## 0. Where it will run
 
-| אפשרות | מתאים ל | הערות |
+| Option | Good for | Notes |
 |---|---|---|
-| **שרת** (מומלץ): Oracle Cloud Always Free, ‏Ubuntu 22.04 ARM | עוזר זמין 24/7 | חינם. `docs/RUNBOOK.md` §3 = בנייה מאפס |
-| **המחשב שלך** (Windows/Mac/Linux) | לנסות, לפתח | הבוט עונה רק כשהמחשב דלוק |
+| **A server** (recommended): Oracle Cloud Always Free, Ubuntu 22.04 ARM | An assistant that is available 24/7 | Free. `docs/RUNBOOK.md` §3 = build from scratch |
+| **Your computer** (Windows/Mac/Linux) | Trying it out, developing | The bot answers only while the computer is on |
 
-צריך **Python 3.12** (לפחות 3.11) ו-**git**.
+You need **Python 3.12** (3.11 at the least) and **git**.
 
-# חלק א׳: רק העוזר
+# Part A: the assistant only
 
-## א1. התקנה
+## A1. Install
 
 ```bash
 git clone <your-private-repo> assistant && cd assistant
 python3.12 -m venv venv
-venv/bin/pip install -r requirements.txt          # בשרת: requirements.lock.txt (גרסאות נעולות)
-venv/bin/playwright install --with-deps chromium  # רק אם רוצים "תרשום אותי ל<קישור>" (הרשמה באתרים)
-python scripts/setup_check.py --init               # יוצר .env מהדוגמה, עם SSA_STUDY=0
+venv/bin/pip install -r requirements.txt          # on the server: requirements.lock.txt (pinned versions)
+venv/bin/playwright install --with-deps chromium  # only if you want "sign me up to <link>" (site sign-ups)
+python scripts/setup_check.py --init               # creates .env from the example, with SSA_STUDY=0
 ```
 
-## א2. המפתחות ב-.env
+(The sign-up command is a Hebrew bot command: "תרשום אותי ל<קישור>".)
 
-כל משתנה מוסבר ב-`.env.example` (חלק A). המינימום:
+## A2. The keys in .env
 
-| משתנה | מאיפה |
+Every variable is explained in `.env.example` (part A). The minimum:
+
+| Variable | Where from |
 |---|---|
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey. להפעיל חיוב, ובאותו פרויקט ב-Google Cloud: Billing → Budgets, להגדיר התראה |
-| `WA_OWNER` | **המספר שלך**, ספרות בלבד (‎9725XXXXXXXX). זה המספר היחיד שהבוט מציית לו |
-| `WA_BOT_NUMBER` | המספר שהגשר מקושר אליו (§א3) |
-| `WA_OWNER_NAME` | איך הבוט קורא לך |
-| `SSA_STUDY` | נשאר `0` במסלול הזה |
-| `SSA_BRAIN=1` | מומלץ: המוח (Gemini עם כלים שרק קוראים). בלי זה עונה הנתב הישן, בקריאה אחת |
-| `OPENAI_API_KEY` (רשות) | רק אם רוצים שהבוט יבין **הודעות קוליות** (תמלול). בלי זה כותבים לו בטקסט |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey. Enable billing, and in the same Google Cloud project: Billing → Budgets, set an alert |
+| `WA_OWNER` | **Your number**, digits only (9725XXXXXXXX). This is the only number the bot obeys |
+| `WA_BOT_NUMBER` | The number the bridge is linked to (§A3) |
+| `WA_OWNER_NAME` | What the bot calls you |
+| `SSA_STUDY` | Stays `0` on this path |
+| `SSA_BRAIN=1` | Recommended: the mind (Gemini with read-only tools). Without it the old router answers, with a single call |
+| `OPENAI_API_KEY` (optional) | Only if you want the bot to understand **voice messages** (transcription). Without it you write to it in text |
 
-> ⚠️ את `.env` לא שולחים לאף אחד, לא מדביקים בצ'אט ולא מעלים ל-git. בשרת: `chmod 600 .env`.
+> ⚠️ Never send `.env` to anyone, paste it in a chat or upload it to git. On the server: `chmod 600 .env`.
 
-## א3. וואטסאפ (המספר שלך)
+## A3. WhatsApp (your number)
 
-הבוט הוא **מכשיר מקושר** (כמו WhatsApp Web) של מספר וואטסאפ (`WA_BOT_NUMBER`), ואתה כותב לו מהמספר שלך (`WA_OWNER`). צריך **מספר נפרד לבוט** (סים שני או eSIM זול): הגשר מתעלם מהודעות שנשלחות מהחשבון שהוא מקושר אליו, אז על אותו מספר הוא לא ישמע אותך. זו גם ספרייה לא רשמית (neonize), ואם מספר נחסם, עדיף שזה יהיה המספר של הבוט ולא שלך.
+The bot is a **linked device** (like WhatsApp Web) of a WhatsApp number (`WA_BOT_NUMBER`), and you write to it from your own number (`WA_OWNER`). You need a **separate number for the bot** (a second SIM or a cheap eSIM): the bridge ignores messages sent from the account it is linked to, so on the same number it will not hear you. This is also an unofficial library (neonize), and if a number gets banned, better that it is the bot's number and not yours.
 
-1. ב-.env: `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER`.
-2. סביבה נפרדת לגשר, בכוונה בלי גישה ל-.env ולמפתחות:
+1. In .env: `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER`.
+2. A separate environment for the bridge, deliberately with no access to .env and the keys:
    ```bash
    python3.12 -m venv venv_wa && venv_wa/bin/pip install neonize
    WA_BOT_NUMBER=9725XXXXXXXX venv_wa/bin/python whatsapp/bridge.py
    ```
-3. בהרצה הראשונה נכתב קוד צימוד ל-`data/wa_bridge/pair_code.txt`. בטלפון של הבוט: וואטסאפ ← מכשירים מקושרים ← קישור מכשיר ← "קישור עם מספר טלפון" ← להקליד את הקוד.
-4. שירותים בשרת (`deploy/systemd/`; לעדכן נתיבים אם המשתמש אינו `ubuntu`):
+3. On the first run a pairing code is written to `data/wa_bridge/pair_code.txt`. On the bot's phone: WhatsApp → Linked devices → Link a device → "Link with phone number" → type the code.
+4. Services on the server (`deploy/systemd/`; update the paths if the user is not `ubuntu`):
    ```bash
    sudo cp deploy/systemd/smart-study-wa-bridge.service deploy/systemd/smart-study-wa-worker.service /etc/systemd/system/
    sudo mkdir -p /etc/systemd/system/smart-study-wa-bridge.service.d && sudo cp deploy/systemd/hardening/smart-study-wa-bridge.conf /etc/systemd/system/smart-study-wa-bridge.service.d/
    sudo systemctl daemon-reload && sudo systemctl enable --now smart-study-wa-bridge smart-study-wa-worker
    ```
 
-(חלופה רשמית: Meta WhatsApp Cloud API עם `WA_TOKEN` ו-`WA_PHONE_NUMBER_ID`, ראו `docs/RUNBOOK.md` §7.)
+(Official alternative: the Meta WhatsApp Cloud API with `WA_TOKEN` and `WA_PHONE_NUMBER_ID`, see `docs/RUNBOOK.md` §7.)
 
-## א4. יומן גוגל
+## A4. Google Calendar
 
-1. https://console.cloud.google.com → פרויקט חדש → APIs: **Google Calendar API**.
-2. OAuth consent screen: ‏External, להוסיף את עצמך כ-test user, ואחר כך **In production** (במצב Testing הטוקן מת אחרי 7 ימים).
-3. Credentials → OAuth client ID → **Desktop app** → להוריד JSON.
-4. `python scripts/gcal_auth.py <client.json>`: הרשאה לאירועים בלבד, נשמר ב-`config/gcal_token.json`.
-5. בשרת: מתחברים במחשב, מעתיקים את קובץ הטוקן לשרת ב-`scp`, ואז `chmod 600`.
+1. https://console.cloud.google.com → new project → APIs: **Google Calendar API**.
+2. OAuth consent screen: External, add yourself as a test user, and afterwards **In production** (in Testing mode the token dies after 7 days).
+3. Credentials → OAuth client ID → **Desktop app** → download the JSON.
+4. `python scripts/gcal_auth.py <client.json>`: permission for events only, saved to `config/gcal_token.json`.
+5. On the server: sign in on your computer, copy the token file to the server with `scp`, then `chmod 600`.
 
-## א5. תזמון
+## A5. Scheduling
 
-ה-worker עושה את העבודה החיה: תזכורות, מעקב כשלא עונים, משימות, התראות לפני אירועים, הודעת הבוקר. ב-cron רק תחזוקה ורשתות ביטחון:
+The worker does the live work: reminders, follow-up when you do not answer, tasks, alerts before events, the morning message. Cron only has maintenance and safety nets:
 
 ```bash
-crontab deploy/crontab.assistant.txt     # UTC. לעדכן נתיבים אם הם לא /home/ubuntu/smart_study_agent
+crontab deploy/crontab.assistant.txt     # UTC. Update the paths if they are not /home/ubuntu/smart_study_agent
 ```
 
-יש בו: heartbeat, בדיקת תקציב, גיבוי מוצפן ל-Drive (צריך `BACKUP_GPG_RECIPIENT`), בדיקת שחזור שבועית של הגיבוי (`scripts/backup_restore_test.py`, בלי לפענח), בדיקת עקביות לילית (`scripts/consistency_check.py`), מעקב אחרי הקישור לוואטסאפ עם התראה מחוץ לוואטסאפ (`scripts/wa_bridge_watch.py`: מייל ו/או `NTFY_TOPIC`), דוח שבועי, בדיקת הטוקנים, בדיקת האבטחה הלילית ולולאת השיפור (§א7).
+It contains: a heartbeat, a budget check, an encrypted backup to Drive (needs `BACKUP_GPG_RECIPIENT`), a weekly backup restore test (`scripts/backup_restore_test.py`, without decrypting), a nightly consistency check (`scripts/consistency_check.py`), monitoring of the WhatsApp link with an alert outside WhatsApp (`scripts/wa_bridge_watch.py`: email and/or `NTFY_TOPIC`), a weekly report, a token check, the nightly security check and the improvement loop (§A7).
 
-## א6. בדיקה
+## A6. Test
 
 ```bash
-PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only   # בלי מודל, פנופטו, NotebookLM או courses.yaml
+PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only   # no model, Panopto, NotebookLM or courses.yaml
 python scripts/setup_check.py                                # "✅ ready"
 ```
 
-ואז לשלוח "היי" לבוט מהמספר שלך. לנסות: "תוסיף ליומן מחר ב-20 ארוחת ערב", "תזכיר לי בעוד שעה להתקשר לאמא", "מה מחכה לי".
+Then send "היי" ("hi") to the bot from your number. Try: "תוסיף ליומן מחר ב-20 ארוחת ערב" (add dinner to the calendar tomorrow at 20:00), "תזכיר לי בעוד שעה להתקשר לאמא" (remind me in an hour to call mom), "מה מחכה לי" (what is waiting for me).
 
-## א7. תוספות (רשות)
+## A7. Extras (optional)
 
-- **בן/בת זוג:** `WA_ALLOWED` (המספר שלו/שלה) ו-`WA_PARTNER_NAME`. הוא/היא יכולים להציע אירועים ליומן ולקבל ממך הודעות, הכול באישור שלך.
-- **יוזמה:** `SSA_PROACTIVE=1` מדליק את השכבה ש"שמה לב": עד 3 הודעות ביום, לפחות 90 דקות ביניהן, אף פעם לא בשעות השקט (`SSA_QUIET_HOURS`). "תפסיק לשאול על זה" משתיק נושא.
-- **Telegram** כערוץ התראות שני: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_USER_ID` (בלי ה-ID הבוט עונה לכולם, אז חובה).
-- **דשבורד** (Streamlit): `DASHBOARD_PASSWORD`, ואז `venv/bin/streamlit run dashboard/app.py --server.address 127.0.0.1 --server.port 8501`. הוא מאזין רק ל-127.0.0.1. מבחוץ דרך מנהרת SSH או Tailscale Serve (רק ב-tailnet, **אף פעם לא Funnel**).
-- **לולאת השיפור ו"קלוד: …":** משימות שינוי רצות בסוכן קוד (Claude Code CLI) תחת משתמש מבודד, עם חומת אש ליציאה (`deploy/claude_agent/`). כל תיקון עובר את הבדיקות בענף נפרד ומחכה ל-✅. ההגדרה הזו דורשת חשבון של סוכן הקוד. בלעדיה "קלוד: …" לא יכול לשנות כלום, ושאר העוזר עובד כרגיל.
-- **הקשחת שרת** (מומלץ): `deploy/ssh/00-hardening.conf`, `deploy/fail2ban/`, `deploy/systemd/hardening/` (פירוט ב-`docs/RUNBOOK.md` §2). בדיקת האבטחה הלילית: `scripts/security_check.py`. הקבועים בראש הקובץ (פורטים, sudoers, משתמשים) תואמים לשרת המקורי, אז בהרצה הראשונה `--dry` ולעדכן לשרת שלך. `SSA_AUTHORIZED_KEYS` = טביעת האצבע של המפתח שלך.
-- **מוח שני ב-Obsidian:** `scripts/vault_assistant.py` (ב-cron, `--dry` לתצוגה) כותב אזור לעוזר בכספת, מפות וחיפוש בפתקים שלך. הפתקים שלך עוברים במחשב ← Drive ← שרת ב-`rclone copy` בלבד (`scripts/vault_pull.ps1`).
-- **מנוי Gemini אישי (כבוי כברירת מחדל):** `SSA_SUBSCRIPTION=1` מעביר שיחה פשוטה וסיכומים למנוי במקום ל-API. לקרוא קודם את `docs/COSTS.md` §5 ואת `utils/gemini_sub.py`: תנאי המנוי חלים עליך, וטקסט של אחרים אף פעם לא עובר לשם.
-- **תקרה לכל חודש:** `config/budget_caps.json` (למשל תקרה נמוכה בחודש המבחנים). לא נקבעת תקרה מתחת למה שכבר הוצא.
-- **שער פריסה:** ‏bare repo בשרת + `deploy/hooks/` (ראו `deploy/hooks/README.md`). כל `git push` מריץ את `tests/test_safety_critical.py`, ופריסה שנכשלת נדחית.
+- **Partner:** `WA_ALLOWED` (their number) and `WA_PARTNER_NAME`. They can suggest calendar events and receive messages from you, all with your approval.
+- **Initiative:** `SSA_PROACTIVE=1` turns on the layer that "notices things": up to 3 messages a day, at least 90 minutes apart, never during quiet hours (`SSA_QUIET_HOURS`). "תפסיק לשאול על זה" (stop asking about this) mutes a topic.
+- **Telegram** as a second notification channel: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_USER_ID` (without the ID the bot answers everyone, so it is mandatory).
+- **Dashboard** (Streamlit): `DASHBOARD_PASSWORD`, then `venv/bin/streamlit run dashboard/app.py --server.address 127.0.0.1 --server.port 8501`. It listens only on 127.0.0.1. From outside, through an SSH tunnel or Tailscale Serve (tailnet only, **never Funnel**).
+- **The improvement loop and "קלוד: ..." ("Claude: ...")**: change tasks run in a coding agent (Claude Code CLI) under an isolated user, with an egress firewall (`deploy/claude_agent/`). Every fix passes the tests on a separate branch and waits for ✅. This setup requires an account with the coding agent. Without it "קלוד: ..." cannot change anything, and the rest of the assistant works as usual.
+- **Server hardening** (recommended): `deploy/ssh/00-hardening.conf`, `deploy/fail2ban/`, `deploy/systemd/hardening/` (details in `docs/RUNBOOK.md` §2). The nightly security check: `scripts/security_check.py`. The constants at the top of the file (ports, sudoers, users) match the original server, so on the first run use `--dry` and update them for your server. `SSA_AUTHORIZED_KEYS` = the fingerprint of your key.
+- **Second brain in Obsidian:** `scripts/vault_assistant.py` (in cron, `--dry` to preview) writes an area for the assistant in the vault, maps and search over your notes. Your notes travel computer → Drive → server with `rclone copy` only (`scripts/vault_pull.ps1`).
+- **A personal Gemini subscription (off by default):** `SSA_SUBSCRIPTION=1` moves simple conversation and summaries to the subscription instead of the API. Read `docs/COSTS.md` §5 and `utils/gemini_sub.py` first: the subscription's terms apply to you, and other people's text never goes there.
+- **A cap per month:** `config/budget_caps.json` (for example a low cap in the exam month). A cap is never set below what has already been spent.
+- **Deploy gate:** a bare repo on the server + `deploy/hooks/` (see `deploy/hooks/README.md`). Every `git push` runs `tests/test_safety_critical.py`, and a deploy that fails is rejected.
 
-# חלק ב׳: תחום הלימודים 🎓
+# Part B: the study domain 🎓
 
-אפשר להוסיף בכל שלב. נבנה לאוניברסיטת תל אביב. באוניברסיטה אחרת ראו §ב5.
+It can be added at any point. Built for Tel Aviv University. For another university see §B5.
 
-## ב1. להדליק
+## B1. Turn it on
 
 ```bash
-python scripts/setup_check.py --init --student     # יוצר config/courses.yaml ו-config/professors.yaml מהדוגמאות
+python scripts/setup_check.py --init --student     # creates config/courses.yaml and config/professors.yaml from the examples
 ```
 
-וב-.env (חלק B):
+And in .env (part B):
 
-| משתנה | מאיפה |
+| Variable | Where from |
 |---|---|
-| `SSA_STUDY=1` | מדליק את התחום |
-| `TAU_USERNAME`, `TAU_ID`, `TAU_PASSWORD` | פרטי ההתחברות שלך לאוניברסיטה (אותם פרטים של מודל) |
-| `SSA_ACTIVE_COURSES` | המפתחות של הקורסים של הסמסטר הזה מתוך `config/courses.yaml` |
-| `OPENAI_API_KEY` (רשות) | תמלול בתשלום, רק אחרון: קודם כתוביות (מחכים להן עד 48 שעות), ואז תמלול מקומי בשרת (`SSA_LOCAL_ASR`, ‎$0, ראו `.env.example` §6) |
-| `SSA_UNIVERSITY`, `SSA_COURSE_SITE_URL` (רשות) | שם האוניברסיטה ואתר הקורסים שלך, לשורות של המוח |
-| `GMAIL_CREDENTIALS_JSON`, `RECIPIENT_EMAIL` (רשות) | סיכומים במייל (§ב3) |
+| `SSA_STUDY=1` | Turns the domain on |
+| `TAU_USERNAME`, `TAU_ID`, `TAU_PASSWORD` | Your university login details (the same ones as Moodle) |
+| `SSA_ACTIVE_COURSES` | The keys of this semester's courses from `config/courses.yaml` |
+| `OPENAI_API_KEY` (optional) | Paid transcription, strictly last: first captions (waited for up to 48 hours), then local transcription on the server (`SSA_LOCAL_ASR`, $0, see `.env.example` §6) |
+| `SSA_UNIVERSITY`, `SSA_COURSE_SITE_URL` (optional) | Your university's name and course site, for the mind's lines |
+| `GMAIL_CREDENTIALS_JSON`, `RECIPIENT_EMAIL` (optional) | Summaries by email (§B3) |
 
-עם `SSA_STUDY=1` נוספים לבוט: מעקב חובות (כולל מטלה שהוזכרה במייל, תוך 15 דקות), סולם דדליינים, ציונים ומשוב, סטטיסטיקת מבחנים, מייל האוניברסיטה, מודל, סיכומים, NotebookLM, חזרות ומבחנים. רשימה מלאה: `docs/FEATURES.md` §2.
+With `SSA_STUDY=1` the bot gains: obligation tracking (including an assignment mentioned in an email, within 15 minutes), a deadline ladder, grades and feedback, exam statistics, university email, Moodle, summaries, NotebookLM, reviews and exams. Full list: `docs/FEATURES.md` §2.
 
-רשות: `config/obligations.yaml` (חובות שאף אוסף לא רואה, מ-`config/obligations.example.yaml`) ו-`config/assistant.yaml` עם `auto_deadlines_to_calendar: true` אם אתה רוצה שכל דדליין ייכנס ליומן שלך לבד (מ-`config/assistant.example.yaml`, שם זה `false`).
+Optional: `config/obligations.yaml` (obligations that no collector sees, from `config/obligations.example.yaml`) and `config/assistant.yaml` with `auto_deadlines_to_calendar: true` if you want every deadline to enter your calendar automatically (from `config/assistant.example.yaml`, where it is `false`).
 
-## ב2. מערכת השעות: `config/courses.yaml`
+## B2. The timetable: `config/courses.yaml`
 
-הקובץ שנוצר הוא דוגמה. לכל קורס:
+The generated file is an example. For each course:
 
-1. **`name` ו-`course_code`:** כמו ב-my.tau.
-2. **`my_sessions`:** השיעורים **של הקבוצה שלך**: `type` (lecture/tutorial), `day` (sun..thu), `start`, `end`, `group`, `location`. לפי זה המערכת לוקחת רק את ההקלטות שלך, ומסננת עדכונים שנוגעים לקבוצות אחרות.
-3. **`my_staff` / `other_staff`** (רשות): שמות המתרגלים של הקבוצה שלך ושל קבוצות אחרות, בעברית ובאנגלית. מסנן הרלוונטיות (`integrations/univ_relevance.py`) נעזר בהם.
-4. **`sources.panopto.folder_id`:** אחרי שה-.env מלא, `python scripts/find_panopto_folders.py` מדפיס את התיקיות שלך. תיקייה מופיעה רק אחרי שעלתה ההקלטה הראשונה.
-5. **`sources.moodle.course_id`:** המספר בכתובת `moodle.tau.ac.il/course/view.php?id=…`.
-6. **`settings.schedule.semester_start` / `semester_end`:** מחוץ לחלון הזה הצינור לא אוסף ולא שולח. `no_class_dates` לימים בלי לימודים.
+1. **`name` and `course_code`:** as in my.tau.
+2. **`my_sessions`:** the classes **of your group**: `type` (lecture/tutorial), `day` (sun..thu), `start`, `end`, `group`, `location`. The system takes only your recordings from this, and filters updates that concern other groups.
+3. **`my_staff` / `other_staff`** (optional): the names of the teaching assistants of your group and of other groups, in Hebrew and English. The relevance filter (`integrations/univ_relevance.py`) uses them.
+4. **`sources.panopto.folder_id`:** once .env is filled in, `python scripts/find_panopto_folders.py` prints your folders. A folder appears only after the first recording has been uploaded.
+5. **`sources.moodle.course_id`:** the number in the address `moodle.tau.ac.il/course/view.php?id=...`.
+6. **`settings.schedule.semester_start` / `semester_end`:** outside this window the pipeline does not collect or send. `no_class_dates` for days without classes.
 
-אחר כך `COURSE_NAMES` / `COURSE_ALT_NAMES` ב-`config/paths.py` אם הוספת קורס שאין שם (שם התצוגה ושמות חלופיים שהבוט מזהה).
+Then `COURSE_NAMES` / `COURSE_ALT_NAMES` in `config/paths.py` if you added a course that is not there (the display name and alternative names that the bot recognizes).
 
-בדיקה: `python dry_run.py` (בלי שליחה), ואז `python scripts/dress_rehearsal.py --no-email` על הרצאה אחת.
+Test: `python dry_run.py` (no sending), then `python scripts/dress_rehearsal.py --no-email` on one lecture.
 
-## ב3. מייל
+## B3. Email
 
-1. באותו פרויקט ב-Google Cloud להפעיל גם **Gmail API** (ו-Drive אם רוצים גיבוי).
-2. סיכומים במייל: את תוכן ה-JSON של ה-OAuth client בשורה אחת ל-`GMAIL_CREDENTIALS_JSON`, ואז `python scripts/gmail_reauth.py` (שומר `config/gmail_token.pickle`).
-3. המייל האוניברסיטאי (קריאה בלבד): `python scripts/tau_mail_auth.py`.
+1. In the same Google Cloud project also enable the **Gmail API** (and Drive if you want a backup).
+2. Summaries by email: put the content of the OAuth client's JSON on one line in `GMAIL_CREDENTIALS_JSON`, then `python scripts/gmail_reauth.py` (saves `config/gmail_token.pickle`).
+3. The university email (read-only): `python scripts/tau_mail_auth.py`.
 
-## ב4. NotebookLM
+## B4. NotebookLM
 
-אין API רשמי. הספרייה `notebooklm-py` משתמשת בהתחברות Google רגילה.
+There is no official API. The `notebooklm-py` library uses a regular Google login.
 
 ```bash
-python -m notebooklm login            # במחשב, פותח דפדפן
-python scripts/sync_notebooklm_all.py # מחברת לכל קורס + העלאה של מה שחדש
+python -m notebooklm login            # on your computer, opens a browser
+python scripts/sync_notebooklm_all.py # a notebook per course + upload of whatever is new
 ```
 
-בשרת: `scripts/vnc_notebooklm_login.sh` (התחברות דרך VNC בשרת עצמו, הכי יציב), או העתקה של `~/.notebooklm/profiles/default/storage_state.json` מהמחשב. Google מנתקת לפעמים התחברות שהועתקה, ו-`scripts/nlm_keepalive.py` בודק ומתריע. אם NotebookLM נופל, הסיכומים והמיילים ממשיכים כרגיל.
+On the server: `scripts/vnc_notebooklm_login.sh` (login through VNC on the server itself, the most stable), or copy `~/.notebooklm/profiles/default/storage_state.json` from your computer. Google sometimes logs out a copied login, and `scripts/nlm_keepalive.py` checks and alerts. If NotebookLM goes down, summaries and emails continue as usual.
 
-## ב5. מודל ופנופטו (אוניברסיטה אחרת?)
+## B5. Moodle and Panopto (another university?)
 
-- ההתחברות לת"א (SSO) נמצאת ב-`collectors/panopto_collector.py` ו-`collectors/moodle_collector.py`. הכתובות ב-`config/courses.yaml` → `settings.panopto.base_url` / `settings.moodle.base_url`.
-- הגדרות של אוניברסיטה אחרת בלי לגעת בקוד: `config/university_pages.json` (הדפים לחיפוש והדומיין), `config/campus.json` (בניינים וזמני הליכה), `config/student_lines.txt` (שורות נוספות למוח), `SSA_UNI_MAIL_DOMAIN` (דומיין המייל שלא מנוקה מהפתקים).
-- באוניברסיטה אחרת צריך להתאים את טופס ההתחברות (שמות השדות) ואת כתובות הבסיס. my.tau (`integrations/tau_portal.py`) והמייל האוניברסיטאי ספציפיים לת"א. בלעדיהם הבוט פשוט לא עונה על שעות מבחנים מהאתר.
-- `scripts/panopto_cookie_probe.py` בודק כמה זמן מחזיקה ההתחברות.
+- The login to TAU (SSO) is in `collectors/panopto_collector.py` and `collectors/moodle_collector.py`. The addresses are in `config/courses.yaml` → `settings.panopto.base_url` / `settings.moodle.base_url`.
+- Settings for another university without touching the code: `config/university_pages.json` (the pages to search and the domain), `config/campus.json` (buildings and walking times), `config/student_lines.txt` (extra lines for the mind), `SSA_UNI_MAIL_DOMAIN` (the email domain that is not scrubbed from the notes).
+- At another university you need to adapt the login form (the field names) and the base addresses. my.tau (`integrations/tau_portal.py`) and the university email are specific to TAU. Without them the bot simply does not answer exam-hours questions from the site.
+- `scripts/panopto_cookie_probe.py` checks how long the login lasts.
 
-## ב6. תזמון מלא
+## B6. Full scheduling
 
-`deploy/crontab.txt` מכיל את כל מה שב-`crontab.assistant.txt` ועוד הצינור הלילי (`scripts/run_daily.sh`), הכנה לפני שיעור, מעקב הגשות, מייל האוניברסיטה, הודעות מודל ו-NotebookLM. למחוק שורות של מה שלא הפעלת, ואז `crontab deploy/crontab.txt`. במחשב Windows: `python scheduler/install_task.py` (Task Scheduler).
+`deploy/crontab.txt` contains everything in `crontab.assistant.txt` plus the nightly pipeline (`scripts/run_daily.sh`), the pre-class primer, submission tracking, the university email, Moodle messages and NotebookLM. Delete the lines of whatever you did not enable, then `crontab deploy/crontab.txt`. On a Windows computer: `python scheduler/install_task.py` (Task Scheduler).
 
 ---
 
-## בדיקות
+## Tests
 
 ```bash
-PYTHONIOENCODING=utf-8 python -m tests.test_safety_critical    # השער: כל התחומים
-PYTHONIOENCODING=utf-8 python -m tests.conversation_evals      # שיחות אמיתיות, בלי רשת
-PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only     # מסלול א׳ בלבד
+PYTHONIOENCODING=utf-8 python -m tests.test_safety_critical    # the gate: all domains
+PYTHONIOENCODING=utf-8 python -m tests.conversation_evals      # real conversations, no network
+PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only     # path A only
 ```
 
-בשיבוט נקי הבדיקות רצות מול `config/courses.example.yaml` (היא מועתקת ל-`config/courses.yaml` אם הוא חסר). הקובץ הזה לא מדליק את תחום הלימודים: רק `SSA_STUDY=1` מדליק. חלק מהבדיקות מכירות את מפתחות הקורסים שבדוגמה, אז אם מחקת קורס מהדוגמה ובדיקה נכשלת, זו הסיבה.
+In a clean clone the tests run against `config/courses.example.yaml` (it is copied to `config/courses.yaml` if that is missing). This file does not turn the study domain on: only `SSA_STUDY=1` does. Some tests know the course keys in the example, so if you deleted a course from the example and a test fails, that is the reason.
 
-## מה עולה כסף, ואיך עוצרים
+## What costs money, and how to stop it
 
-- בערך ‎$3–10 לחודש לעוזר בלבד, ‎$15–30 עם הלימודים. פירוט, מחיר לכל יכולת ודרכים לחסוך: [docs/COSTS.md](docs/COSTS.md).
-- Gemini (הבוט, קריאת קבצים, סיכומים), OpenAI (תמלול בלבד: הודעות קוליות לבוט, והרצאות בלי כתוביות בתחום הלימודים). כל קריאה נרשמת ב-`data/usage.jsonl` ומוצגת בדשבורד.
-- תקרה קשיחה ‎$50 לחודש (`utils/budget.py`): מעליה הכול נעצר (`data/budget_lock.json`) ומגיעה הודעה. בנוסף לזה יש תקרה יומית לשיחות (`SSA_BRAIN_DAY_CAP`), תקרה לכל חודש ב-`config/budget_caps.json` ותקרה לבניית האתר (`SSA_SITE_API_CAP`). כשנגמר התקציב הבוט עובר למצב חירום ועונה מהנתונים.
-- לעצור את הבוט: `sudo systemctl stop smart-study-wa-worker`. לכבות את צינור הלימודים: `SMART_STUDY_DISABLE=1`. בלי תמלול בתשלום: `SMART_STUDY_DISABLE_WHISPER=1`.
+- About $3-10 a month for the assistant alone, $15-30 with studies. Details, the price of each capability and ways to save: [docs/COSTS.md](docs/COSTS.md).
+- Gemini (the bot, file reading, summaries), OpenAI (transcription only: voice messages to the bot, and lectures without captions in the study domain). Every call is logged in `data/usage.jsonl` and shown in the dashboard.
+- A hard cap of $50 a month (`utils/budget.py`): above it everything stops (`data/budget_lock.json`) and a message arrives. On top of that there is a daily cap on conversations (`SSA_BRAIN_DAY_CAP`), a cap per month in `config/budget_caps.json` and a cap on building the site (`SSA_SITE_API_CAP`). When the budget runs out the bot moves to emergency mode and answers from the data.
+- To stop the bot: `sudo systemctl stop smart-study-wa-worker`. To turn off the study pipeline: `SMART_STUDY_DISABLE=1`. Without paid transcription: `SMART_STUDY_DISABLE_WHISPER=1`.
 
-## עדכון לגרסה חדשה
+## Updating to a new version
 
 ```bash
 git pull
-venv/bin/pip install -r requirements.txt          # בשרת: requirements.lock.txt
+venv/bin/pip install -r requirements.txt          # on the server: requirements.lock.txt
 PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 ```
 
-עם שער פריסה (`deploy/hooks/README.md`): מעדכנים במחשב ועושים `git push` לשרת, והשער מריץ את הבדיקות לפני שהקוד עולה.
+With a deploy gate (`deploy/hooks/README.md`): update on your computer and `git push` to the server, and the gate runs the tests before the code goes live.
 
-שאלות נפוצות וטבלת תקלות: [docs/FAQ.md](docs/FAQ.md).
+FAQ and the troubleshooting table: [docs/FAQ.md](docs/FAQ.md).
 
-## לפני שמעלים ל-GitHub
+## Before uploading to GitHub
 
 ```bash
-python scripts/install_git_hooks.py      # פעם אחת: כל push מריץ קודם את הסריקה ונחסם על כל ממצא
-python scripts/release_scan.py           # חייב להיות "clean"
-python scripts/release_scan.py --values ~/my_private_values.txt   # רשימה פרטית שלך (טלפון, מייל, ת"ז, IP), מחוץ לריפו
+python scripts/install_git_hooks.py      # once: every push runs the scan first and is blocked on any finding
+python scripts/release_scan.py           # must say "clean"
+python scripts/release_scan.py --values ~/my_private_values.txt   # your own private list (phone, email, ID, IP), kept outside the repo
 ```
 
-ראו [SECURITY.md](SECURITY.md).
+See [SECURITY.md](SECURITY.md).

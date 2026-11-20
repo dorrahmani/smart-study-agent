@@ -214,7 +214,7 @@ def _reauth() -> None:
 # ─── render helpers ─────────────────────────────────────────────────────────
 
 def _render_auth_strip(agent) -> None:
-    """Thin header strip showing connection status + רענן (re-auth) button."""
+    """Thin header strip showing connection status + a "רענן" (re-auth) button."""
     age = agent.auth_age_hours()
     ok = age <= 4
     label = "מחובר" if ok else "פג"

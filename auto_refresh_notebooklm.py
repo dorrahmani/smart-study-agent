@@ -1,8 +1,8 @@
 """
-auto_refresh_notebooklm.py — רץ ברקע (Task Scheduler) כל 4 שעות.
-מרענן את storage_state.json בשקט ללא פתיחת חלון דפדפן.
-כותב ל-logs/notebooklm_auth_refresh.log.
-מחזיר exit code 0 בהצלחה, 1 בכשל.
+auto_refresh_notebooklm.py — runs in the background (Task Scheduler) every 4 hours.
+Refreshes storage_state.json silently, without opening a browser window.
+Writes to logs/notebooklm_auth_refresh.log.
+Returns exit code 0 on success, 1 on failure.
 """
 import sys
 import os
@@ -20,7 +20,7 @@ STORAGE_PATH    = pathlib.Path.home() / ".notebooklm" / "storage_state.json"
 LOG_DIR         = SCRIPT_DIR / "logs"
 LOG_FILE        = LOG_DIR / "notebooklm_auth_refresh.log"
 NOTEBOOKLM_URL  = "https://notebooklm.google.com"
-ACCOUNTS_URL    = "https://accounts.google.com/"   # כפיית קוקיות .google.com
+ACCOUNTS_URL    = "https://accounts.google.com/"   # force .google.com cookies
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -36,7 +36,7 @@ def log(msg: str) -> None:
 def main() -> int:
     log("=== auto_refresh_notebooklm — התחלה ===")
 
-    # בדוק שה-profile קיים לפני ניסיון פתיחה
+    # check that the profile exists before trying to open it
     if not BROWSER_PROFILE.exists():
         log(f"ERROR: browser_profile לא נמצא: {BROWSER_PROFILE}")
         log("יש להריץ fix_notebooklm_auth.py פעם אחת כדי ליצור את הפרופיל")
@@ -53,7 +53,7 @@ def main() -> int:
             log("פותח דפדפן headless...")
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(BROWSER_PROFILE),
-                headless=True,          # ←  שקט לחלוטין
+                headless=True,          # <- completely silent
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--password-store=basic",
@@ -74,15 +74,15 @@ def main() -> int:
             current_url = page.url
             log(f"URL נוכחי: {current_url}")
 
-            # אם הגענו ל-login — הסשן פג ואי אפשר לרענן בשקט
+            # if we landed on login — the session expired and can't be refreshed silently
             if "notebooklm.google.com" not in current_url:
                 log("ERROR: הגענו לדף התחברות — הסשן פג!")
                 log("הרץ fix_notebooklm_auth.py ידנית כדי להתחבר מחדש")
                 context.close()
                 return 1
 
-            # שלב קריטי: ניווט ל-accounts.google.com לכפיית קוקיות .google.com
-            # (בדיוק כמו notebooklm login עושה — חיוני לישראל/אזורים עם .google.co.il)
+            # critical step: navigate to accounts.google.com to force .google.com cookies
+            # (exactly what notebooklm login does — essential for Israel / regions with .google.co.il)
             log("מרענן קוקיות .google.com ...")
             try:
                 page.goto(ACCOUNTS_URL, wait_until="load", timeout=15_000)
@@ -93,7 +93,7 @@ def main() -> int:
             except Exception:
                 pass
 
-            # שמור את ה-storage_state המעודכן
+            # save the updated storage_state
             context.storage_state(path=str(STORAGE_PATH))
             STORAGE_PATH.chmod(0o600)
             log(f"storage_state.json עודכן בהצלחה: {STORAGE_PATH}")

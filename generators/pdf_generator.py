@@ -1,5 +1,5 @@
 """
-PDF Generator - ממיר Markdown ל-PDF עם WeasyPrint (RTL מלא)
+PDF Generator - converts Markdown to PDF with WeasyPrint (full RTL)
 """
 
 import sys
@@ -16,21 +16,21 @@ except AttributeError:
 
 
 def preprocess_markdown(md_text: str) -> str:
-    """ממיר טבלאות markdown לרשימות, מסיר מספור כותרות"""
+    """Converts markdown tables to lists, removes heading numbering"""
     lines = md_text.split('\n')
     result = []
     for line in lines:
-        # טבלת separator — דלג
+        # separator table row — skip
         if re.match(r'^\s*\|[\s\-\|:]+\|\s*$', line):
             continue
-        # שורת טבלה — המר לרשימה
+        # table row — convert to a list
         if '|' in line and line.strip().startswith('|'):
             cells = [c.strip() for c in line.strip().strip('|').split('|')]
             cells = [c for c in cells if c]
             if cells:
                 result.append('- ' + ' — '.join(cells))
             continue
-        # הסר מספור מכותרות: "## 1. נושא" → "## נושא"
+        # Remove numbering from headings: "## 1. נושא" → "## נושא"
         line = re.sub(r'^(#{1,4})\s+\d+\.\s+', r'\1 ', line)
         result.append(line)
     return '\n'.join(result)
@@ -42,7 +42,7 @@ def _escape_math(content: str) -> str:
 
 
 def inline_to_html(text: str) -> str:
-    """המרת inline markdown לHTML"""
+    """Converts inline markdown to HTML"""
     # Protect $...$ math from other substitutions: extract first, replace at end
     math_placeholders = {}
     counter = [0]
@@ -77,7 +77,7 @@ def inline_to_html(text: str) -> str:
 
 
 def markdown_to_html_full(md_text: str, title: str = "", course_name: str = "") -> str:
-    """ממיר Markdown ל-HTML מלא עם CSS RTL לPDF"""
+    """Converts Markdown to full HTML with RTL CSS for PDF"""
     md_text = preprocess_markdown(md_text)
 
     css = """
@@ -239,7 +239,7 @@ def markdown_to_html_full(md_text: str, title: str = "", course_name: str = "") 
     }
     """
 
-    # בנה header
+    # Build the header
     header_html = f'''
     <div class="header">
         <p class="course-name">{course_name}</p>
@@ -247,7 +247,7 @@ def markdown_to_html_full(md_text: str, title: str = "", course_name: str = "") 
     </div>
     ''' if (title or course_name) else ''
 
-    # המר markdown לHTML
+    # Convert markdown to HTML
     lines = md_text.split('\n')
     body_parts = []
     in_code = False
@@ -400,7 +400,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
 def markdown_to_pdf(md_text: str, output_path: str, title: str = "", course_name: str = "") -> str:
-    """ממיר Markdown ל-PDF באמצעות Playwright (Chromium) — RTL מלא"""
+    """Converts Markdown to PDF using Playwright (Chromium) — full RTL"""
     import tempfile
     from playwright.sync_api import sync_playwright
 

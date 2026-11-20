@@ -1,8 +1,8 @@
 """
-run_now.py — ריצה חכמה לפי זמן מאז הריצה האחרונה
-מחשב days_back אוטומטית ומריץ את כל הקורסים.
+run_now.py — a smart run according to the time since the last run
+Computes days_back automatically and runs all the courses.
 
-הרצה: לחץ פעמיים על run_now.bat בשולחן העבודה
+To run: double-click run_now.bat on the desktop
 """
 
 import sys
@@ -28,9 +28,9 @@ MIN_DAYS_BACK = 1
 
 
 def get_days_since_last_run(default_days: int = 2) -> int:
-    """מחשב כמה ימים עברו מאז הריצה האחרונה"""
+    """Computes how many days have passed since the last run"""
     if not LAST_RUN_FILE.exists():
-        # אין היסטוריה — שמור היום והשתמש בברירת מחדל
+        # no history — save today and use the default
         save_last_run()
         print(f"ℹ️  ריצה ראשונה — מחפש {default_days} ימים אחורה")
         return default_days
@@ -51,7 +51,7 @@ def get_days_since_last_run(default_days: int = 2) -> int:
 
 
 def save_last_run():
-    """שומר timestamp של הריצה הנוכחית"""
+    """Saves the timestamp of the current run"""
     LAST_RUN_FILE.parent.mkdir(parents=True, exist_ok=True)
     LAST_RUN_FILE.write_text(str(datetime.now(tz=timezone.utc).timestamp()))
 
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     from main import SmartStudyAgent
     agent = SmartStudyAgent(CONFIG_PATH)
 
-    # override days_back בזיכרון בלבד (לא כותב לקובץ)
+    # override days_back in memory only (does not write to the file)
     agent.config['settings']['schedule']['days_back'] = days_back
 
     try:

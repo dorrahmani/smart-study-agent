@@ -1,5 +1,5 @@
 """
-Professor Agent - מוסיף טיפים מנקודת-מבט הפרופסור לסיכומים
+Professor Agent - adds professor's-point-of-view tips to the summaries
 """
 
 import os
@@ -43,11 +43,11 @@ class ProfessorAgent:
 
     def add_tips_to_summary(self, summary_md_path: str, course_key: str) -> dict:
         """
-        קורא את הסיכום, מייצר טיפים מנקודת-מבט הפרופסור,
-        מצרף אותם לקובץ MD וממיר מחדש ל-PDF.
+        Reads the summary, generates tips from the professor's point of view,
+        appends them to the MD file and converts it to PDF again.
 
         Returns: {'tips': str, 'cost_usd': float, 'tokens_in': int, 'tokens_out': int}
-        """
+"""
         md_path = Path(summary_md_path)
         if not md_path.exists():
             print(f'❌ קובץ לא נמצא: {summary_md_path}')
@@ -58,24 +58,24 @@ class ProfessorAgent:
             print(f'⚠️  אין פרופסור מוגדר עבור קורס: {course_key}')
             return {'tips': '', 'cost_usd': 0.0, 'tokens_in': 0, 'tokens_out': 0}
 
-        # בדוק שאין כבר טיפים
+        # check that there are no tips already
         if self.get_tips_section(summary_md_path):
             print(f'ℹ️  טיפי הפרופסור כבר קיימים ב: {md_path.name}')
             return {'tips': '', 'cost_usd': 0.0, 'tokens_in': 0, 'tokens_out': 0}
 
         print(f'\n👨‍🏫 מייצר טיפי פרופסור עבור: {md_path.name}')
 
-        # קרא תוכן הסיכום (ללא מטא-דאטה)
+        # read the summary content (without metadata)
         full_md = md_path.read_text(encoding='utf-8')
         summary_content = self._strip_metadata(full_md)
 
-        # בנה זיכרון קורס (כותרות מהרצאות קודמות)
+        # build course memory (headings from previous lectures)
         memory = self._get_course_memory(course_key, exclude_path=str(md_path))
 
-        # בנה שם קורס אנושי לפי הפרופסור
+        # build a human-readable course name based on the professor
         course_name = persona.get('name', course_key)
 
-        # צור prompt ושלח ל-Claude
+        # create the prompt and send it to Claude
         prompt = self._build_tips_prompt(summary_content, memory, persona, course_name)
 
         print('🧠 שולח ל-Gemini לייצור טיפים...')
@@ -104,14 +104,14 @@ class ProfessorAgent:
 
         print(f'💰 פרופסור: {tokens_in:,} in + {tokens_out:,} out = ${cost:.4f}')
 
-        # צרף לקובץ MD
+        # append to the MD file
         self._append_tips_to_file(
             md_path=str(md_path),
             tips=tips,
             cost_info={'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost_usd': cost}
         )
 
-        # מחולל PDF מחדש
+        # regenerate the PDF
         try:
             from generators.pdf_generator import markdown_to_pdf
             updated_md = md_path.read_text(encoding='utf-8')
@@ -134,12 +134,12 @@ class ProfessorAgent:
 
     def _get_course_memory(self, course_key: str, exclude_path: str) -> str:
         """
-        קורא כותרות ## ו-### מסיכומים קודמים בקורס (לא את הנוכחי).
-        מחזיר מחרוזת בפורמט:
+        Reads the ## and ### headings from previous summaries in the course (not the current one).
+        Returns a string in the format:
           הרצאה 1 (14/04/2026):
-          - נושא א
-          - נושא ב
-        """
+          - topic A
+          - topic B
+"""
         exclude = Path(exclude_path).resolve()
         summaries_dir = Path(f'data/summaries/{course_key}/lectures')
         if not summaries_dir.exists():
@@ -155,7 +155,7 @@ class ProfessorAgent:
                 continue
 
             stem = f.stem  # "2026-04-14 - מרצה_כ - הרצאה 1"
-            # חלץ תאריך מהשם
+            # extract the date from the name
             date_match = re.match(r'^(\d{4}-\d{2}-\d{2})', stem)
             date_str = ''
             if date_match:
@@ -164,7 +164,7 @@ class ProfessorAgent:
                 parts_d = raw.split('-')
                 date_str = f'{parts_d[2]}/{parts_d[1]}/{parts_d[0]}'
 
-            # שם תצוגה: אחרי התאריך
+            # display name: after the date
             label_parts = stem.split(' - ', 1)
             label = label_parts[1] if len(label_parts) > 1 else stem
             if date_str:
@@ -172,13 +172,13 @@ class ProfessorAgent:
 
             try:
                 text = f.read_text(encoding='utf-8')
-                # חלץ רק שורות ## ו-### (כותרות נושאים)
+                # extract only the ## and ### lines (topic headings)
                 headers = []
                 for line in text.splitlines():
                     if line.startswith('## ') or line.startswith('### '):
-                        # הסר סימני # ורווח
+                        # strip the # marks and spaces
                         clean = re.sub(r'^#{2,3}\s+', '', line).strip()
-                        # דלג על כותרות מטא-דאטה שחוזרות
+                        # skip recurring metadata headings
                         if clean in ('חומרים שנסרקו לסיכום זה', 'עלות API',
                                      'לוח הכיתה', 'קישור להרצאות קודמות',
                                      'בדיקת רצף ממסמכי הקורס', '👨‍🏫 הערות הפרופסור'):
@@ -186,7 +186,7 @@ class ProfessorAgent:
                         headers.append(f'- {clean}')
 
                 if headers:
-                    block = '\n'.join(headers[:20])  # עד 20 כותרות לכל הרצאה
+                    block = '\n'.join(headers[:20])  # up to 20 headings per lecture
                     parts.append(f'{label}:\n{block}')
             except Exception:
                 parts.append(f'{label}:\n- (לא זמין)')
@@ -205,7 +205,7 @@ class ProfessorAgent:
         persona: dict,
         course_name: str
     ) -> str:
-        """בונה את ה-prompt לייצור טיפי פרופסור."""
+        """Builds the prompt for generating the professor tips."""
 
         memory_section = ''
         if memory.strip():
@@ -260,8 +260,8 @@ class ProfessorAgent:
 
     def _append_tips_to_file(self, md_path: str, tips: str, cost_info: dict):
         """
-        מוסיף את סעיף הטיפים לסוף קובץ ה-MD ומעדכן את סעיף עלות API בכותרת.
-        """
+        Appends the tips section to the end of the MD file and updates the API cost section in the header.
+"""
         path = Path(md_path)
         existing = path.read_text(encoding='utf-8')
 
@@ -269,13 +269,13 @@ class ProfessorAgent:
         tokens_out = cost_info.get('tokens_out', 0)
         cost_usd   = cost_info.get('cost_usd', 0.0)
 
-        # ── עדכן סעיף עלות API בכותרת ──────────────────────────────────────────
-        # מחפש את שורת הסה"כ ומוסיף לפניה שורת פרופסור + מעדכן הסה"כ
+        # ── update the API cost section in the header ──────────────────────────────────────────
+        # looks for the total line and adds a professor line before it + updates the total
         def _update_cost_section(text: str) -> str:
-            # מצא את שורת הסה"כ הקיימת
+            # find the existing total line
             total_m = re.search(r'- \*\*סה"כ\*\*: \$([0-9.]+)', text)
             if not total_m:
-                return text  # לא נמצא — לא מעדכן
+                return text  # not found — don't update
             existing_total = float(total_m.group(1))
             new_total = existing_total + cost_usd
 
@@ -285,7 +285,7 @@ class ProfessorAgent:
             )
             updated_total = f'- **סה"כ**: ${new_total:.4f}'
 
-            # הוסף שורת פרופסור לפני שורת הסה"כ ועדכן את הסה"כ
+            # add a professor line before the total line and update the total
             text = re.sub(
                 r'(- \*\*סה"כ\*\*: \$[0-9.]+)',
                 prof_line + '\n' + updated_total,
@@ -296,7 +296,7 @@ class ProfessorAgent:
 
         updated_existing = _update_cost_section(existing)
 
-        # ── הוסף בלוק טיפים לסוף הקובץ ─────────────────────────────────────────
+        # ── add the tips block at the end of the file ─────────────────────────────────────────
         tips_block = f'\n---\n## 👨\u200d🏫 הערות הפרופסור\n\n{tips}\n'
         updated = updated_existing.rstrip('\n') + '\n' + tips_block
         path.write_text(updated, encoding='utf-8')
@@ -304,8 +304,8 @@ class ProfessorAgent:
 
     def get_tips_section(self, md_path: str) -> str:
         """
-        מחזיר את סעיף הערות הפרופסור הקיים בקובץ, או מחרוזת ריקה אם אין.
-        """
+        Returns the existing professor-notes section in the file, or an empty string if there is none.
+"""
         path = Path(md_path)
         if not path.exists():
             return ''
@@ -327,7 +327,7 @@ class ProfessorAgent:
 
     @staticmethod
     def _strip_metadata(md_text: str) -> str:
-        """מסיר את בלוק המטא-דאטה (חומרים + עלות) מעל קו ה--- הראשון."""
+        """Removes the metadata block (materials + cost) above the first --- line."""
         parts = re.split(r'\n---\n', md_text, maxsplit=1)
         if len(parts) == 2:
             return parts[1].lstrip('\n')
@@ -335,7 +335,7 @@ class ProfessorAgent:
 
     @classmethod
     def _calc_cost(cls, model: str, input_tokens: int, output_tokens: int) -> float:
-        """מחשב עלות בדולרים לפי מחירון המודל."""
+        """Computes the cost in dollars according to the model's price list."""
         key = model if model in cls._PRICING else ('sonnet' if 'sonnet' in model else 'haiku')
         inp_price, out_price = cls._PRICING[key]
         return (input_tokens * inp_price + output_tokens * out_price) / 1_000_000

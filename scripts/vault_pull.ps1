@@ -13,7 +13,7 @@ $log    = Join-Path $env:LOCALAPPDATA "smart-study-vault-pull.log"
 
 "[$(Get-Date -Format s)] vault pull start" | Out-File -Append -Encoding utf8 $log
 
-# 16/11 the other direction, for ONE folder only: the notes the owner writes himself ("✍️ שלי") go up to
+# 16/11 the other direction, for ONE folder only: the notes the owner writes himself ("✍️ שלי", i.e. "Mine") go up to
 # gdrive:smart-study-agent/vault_inbox, where the server picks them up (vault_sync/mine.py: never deletes, a conflict keeps
 # both). The server never writes into that folder, and this pull skips it, so nothing he writes is ever overwritten.
 # The name is built from code points: Windows PowerShell 5 reads a BOM-less script as ANSI.

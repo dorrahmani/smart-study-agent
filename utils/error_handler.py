@@ -1,5 +1,5 @@
 """
-Error Handler - טיפול חכם בשגיאות עם retry logic
+Error Handler - smart error handling with retry logic
 """
 
 import time
@@ -7,7 +7,7 @@ import functools
 from typing import Callable, Any, Optional
 import logging
 
-# הגדר logging
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 
 def retry_on_failure(max_attempts: int = 3, delay: int = 2, backoff: int = 2):
     """
-    Decorator לניסיון חוזר במקרה של שגיאה
-    
+    Decorator that retries on error
+
     Args:
-        max_attempts: מספר ניסיונות מקסימלי
-        delay: המתנה בשניות בין ניסיונות
-        backoff: מכפיל להמתנה (exponential backoff)
-    """
+        max_attempts: maximum number of attempts
+        delay: wait in seconds between attempts
+        backoff: wait multiplier (exponential backoff)
+"""
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> Any:
@@ -51,7 +51,7 @@ def retry_on_failure(max_attempts: int = 3, delay: int = 2, backoff: int = 2):
 
 
 class SafeExecutor:
-    """מריץ פונקציות בצורה בטוחה עם logging"""
+    """Runs functions safely with logging"""
     
     @staticmethod
     def execute(
@@ -62,16 +62,16 @@ class SafeExecutor:
         **kwargs
     ) -> Optional[Any]:
         """
-        מריץ פונקציה בצורה בטוחה
-        
+        Runs a function safely
+
         Args:
-            func: הפונקציה להרצה
-            task_name: שם המשימה ל-logging
-            critical: האם זו משימה קריטית (לזרוק exception)
-        
+            func: the function to run
+            task_name: task name for logging
+            critical: whether this is a critical task (raise the exception)
+
         Returns:
-            תוצאת הפונקציה או None במקרה של שגיאה
-        """
+            the function's result, or None on error
+"""
         try:
             logger.info(f"▶️  מתחיל: {task_name}")
             result = func(*args, **kwargs)
@@ -87,16 +87,16 @@ class SafeExecutor:
             return None
 
 
-# דוגמאות שימוש:
+# Usage examples:
 
 @retry_on_failure(max_attempts=3, delay=2)
 def download_with_retry(url: str):
-    """דוגמה - הורדה עם retry"""
-    # קוד ההורדה כאן
+    """Example - download with retry"""
+    # the download code goes here
     pass
 
 
-# או בלי decorator:
+# or without a decorator:
 def some_risky_function():
     executor = SafeExecutor()
     
@@ -104,7 +104,7 @@ def some_risky_function():
         download_file,
         url="http://example.com/file.pdf",
         task_name="הורדת קובץ PDF",
-        critical=False  # לא לעצור אם נכשל
+        critical=False  # don't stop if it fails
     )
     
     if result:

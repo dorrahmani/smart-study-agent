@@ -1,10 +1,10 @@
 """
 scripts/sync_notebooklm_all.py
 ==============================
-מעלה את כל הסיכומים+SRTs הקיימים לכל המחברות של NotebookLM.
-- חוצה כל קורס × כל scope (all / lectures_only / tutorials_only)
-- sync_sources() אוטומטית מדלג על מה שכבר הועלה (לפי sources_synced)
-- אפס סיכוי לכפילויות
+Uploads all the existing summaries+SRTs to all the NotebookLM notebooks.
+- crosses every course × every scope (all / lectures_only / tutorials_only)
+- sync_sources() automatically skips what was already uploaded (by sources_synced)
+- zero chance of duplicates
 """
 import sys, os, traceback
 sys.path.insert(0, '.')
@@ -24,14 +24,14 @@ from generators import notebooklm_agent as nlm
 def main():
     print('🔐 בודק קובץ session...', flush=True)
     agent = nlm.NotebookLMAgent()
-    # is_authenticated() שבור ב-SDK 0.3.4 (קורא ל-list_notebooks הישן). מדלגים.
+    # is_authenticated() is broken in SDK 0.3.4 (it calls the old list_notebooks). Skipping.
     age = agent.auth_age_hours()
     if age == float('inf'):
         print('❌ לא מצאתי storage_state.json — הרץ: python -m notebooklm login')
         return
     print(f'✅ session נמצא (גיל: {age:.1f}h)\n')
 
-    # כל הקורסים מה-config
+    # all the courses from the config
     idx = nlm._load_notebooks_index()
     course_keys = list(idx.keys())
     print(f'📚 קורסים: {course_keys}\n')
@@ -42,11 +42,11 @@ def main():
         scopes = nlm.all_scopes_for_course(ck)
         print(f'\n══════ {ck} ({len(scopes)} scopes) ══════', flush=True)
         for scope in scopes:
-            # הכן רשימות לפי scope
+            # prepare lists by scope
             if scope == 'lectures_only':
                 summary_pdfs = nlm.list_summary_pdfs(ck, 'lectures')
                 srts = nlm.list_srt_files(ck, 'lectures')
-                moodle = []  # לא כוללים moodle ב-lectures_only
+                moodle = []  # don't include moodle in lectures_only
             elif scope == 'tutorials_only':
                 summary_pdfs = nlm.list_summary_pdfs(ck, 'tutorials')
                 srts = nlm.list_srt_files(ck, 'tutorials')
@@ -78,7 +78,7 @@ def main():
                         print(f'      + {a}')
                 if skipped:
                     print(f'    ⏭️  דילג {len(skipped)} (כבר קיימים או שגיאות)')
-                    # הראה רק שגיאות
+                    # show only errors
                     errs = [s for s in skipped if 'ERROR' in s or 'EMPTY' in s]
                     for e in errs[:5]:
                         print(f'      ⚠️  {e}')

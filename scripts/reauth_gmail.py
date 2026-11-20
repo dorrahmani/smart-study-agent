@@ -1,13 +1,13 @@
 """
-reauth_gmail.py — חידוש הרשאת Gmail כש-refresh token נדחה ע"י Google.
+reauth_gmail.py — renews Gmail authorization when the refresh token is rejected by Google.
 
-מה זה עושה:
-  1. מגבה את ה-pickle הישן (אם קיים)
-  2. מוחק אותו כדי לאלץ OAuth flow מלא
-  3. מריץ את GmailSender — זה יפתח דפדפן עם דף הסכמה של Google
-  4. אחרי שתאשר בדפדפן — token חדש יישמר
+What it does:
+  1. backs up the old pickle (if it exists)
+  2. deletes it to force a full OAuth flow
+  3. runs GmailSender — this opens a browser with Google's consent page
+  4. after you approve in the browser — a new token is saved
 
-דרישה: GMAIL_CREDENTIALS_JSON מוגדר ב-.env (כבר מוגדר אצלך).
+Requirement: GMAIL_CREDENTIALS_JSON is set in .env (already set for you).
 """
 from __future__ import annotations
 import os, sys, shutil, time
@@ -33,5 +33,5 @@ print("\n🌐 פותח דפדפן לאישור גישה ל-Gmail...")
 print("   (אם הדפדפן לא נפתח אוטומטית — תועתק כתובת לטרמינל)\n")
 
 from generators.gmail_sender import GmailSender
-mailer = GmailSender()  # מפעיל את flow.run_local_server אם אין pickle תקף
+mailer = GmailSender()  # runs flow.run_local_server if there is no valid pickle
 print("\n✅ token חדש נשמר. המערכת תשתמש בו בריצה הבאה")

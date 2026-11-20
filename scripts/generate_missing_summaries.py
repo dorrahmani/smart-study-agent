@@ -1,8 +1,8 @@
 """
 scripts/generate_missing_summaries.py
-מייצר סיכומים לכל ה-SRTs שחסר להם סיכום,
-כולל קריאת לוח (board reading) כשרלוונטי,
-סנכרון ל-Vault ו-NotebookLM, ושליחה למייל.
+Generates summaries for all the SRTs that lack a summary,
+including board reading when relevant,
+syncing to the Vault and NotebookLM, and sending by email.
 """
 
 import sys, os

@@ -1,6 +1,6 @@
 """
-add_board_reading.py — מוסיף board reading לסיכומים קיימים שחסר להם.
-מריץ על הרצאות עם board_reading=true שכבר סוכמו אבל ללא תוכן לוח.
+add_board_reading.py — adds board reading to existing summaries that lack it.
+Runs on lectures with board_reading=true that were already summarized but have no board content.
 """
 import sys, json, re
 from pathlib import Path
@@ -47,7 +47,7 @@ def summary_has_board(md_path: Path) -> bool:
 
 
 def append_board_to_summary(md_path: Path, board_text: str, usage: dict):
-    """מוסיף תוכן לוח לסיכום קיים."""
+    """Adds board content to an existing summary."""
     content = md_path.read_text(encoding='utf-8', errors='replace')
 
     board_section = f"""
@@ -93,7 +93,7 @@ def append_board_to_summary(md_path: Path, board_text: str, usage: dict):
 
 
 def find_summary_for_metadata(course_key: str, meta: dict) -> Path | None:
-    """מוצא קובץ סיכום לפי תאריך וכותרת."""
+    """Finds a summary file by date and title."""
     course_dir = SUMMARIES_DIR / course_key / 'lectures'
     if not course_dir.exists():
         return None

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs ONE WhatsApp "קלוד:" task as the isolated `claudeagent` user (no sudo, can't read /home/ubuntu,
+# Runs ONE WhatsApp "קלוד:" ("Claude:") task as the isolated `claudeagent` user (no sudo, can't read /home/ubuntu,
 # .env or any key). Installed to /home/claudeagent/agent_job.sh; started by agent/claude_job.py.
 #   agent_job.sh <job_id> [start|resume|restart] [session uuid]
 #     start   (default) fresh copy of production main + the task (~/jobs/<id>/task.txt, ~/inbox/main.bundle)

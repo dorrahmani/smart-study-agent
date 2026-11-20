@@ -1,6 +1,6 @@
-# הנחיות סיכום לפי קורס — נכנסות לפרומפט של Gemini (generators/summarizer.py).
-# מפתח = course_key מ-config/courses.yaml. קורס בלי ערך כאן מקבל את ההנחיות הכלליות בלבד.
-# לעריכה: שנו כאן, commit, `git push vm`. (YAML — לכתיבה מקוד רק yaml.safe_dump.)
+# Per-course summary guidelines — fed into the Gemini prompt (generators/summarizer.py). The prompt text below stays in Hebrew.
+# Key = course_key from config/courses.yaml. A course with no entry here gets only the general guidelines.
+# To edit: change here, commit, `git push vm`. (YAML — when writing from code, only yaml.safe_dump.)
 
 probability:
   focus: |

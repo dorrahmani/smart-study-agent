@@ -55,7 +55,7 @@
 */15 * * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "TAU Mail" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/tau_mail_watch.py" >> /home/ubuntu/smart_study_agent/logs/tau_mail.log 2>&1
 # Moodle announcements → triage queue → WhatsApp (10/10/26); 08:15/13:15/19:15 IL
 15 5,10,16 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Moodle Announcements" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/moodle_announce_watch.py" >> /home/ubuntu/smart_study_agent/logs/moodle_announce.log 2>&1
-# One brain (15/10/26): vault 🧠 המוח notes → the brain notebook in NotebookLM; 04:40 IL
+# One brain (15/10/26): vault 🧠 המוח ("the brain") notes → the brain notebook in NotebookLM; 04:40 IL
 40 1 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Brain Sync" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/brain_sync.py" >> /home/ubuntu/smart_study_agent/logs/brain_sync.log 2>&1
 # Lecturer site updated → rebuild that lecture's unified summary (18/10/26); 12:00 / 23:00 IL
 0 9,20 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Lecturer Rebuild" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/lecturer_rebuild.py" >> /home/ubuntu/smart_study_agent/logs/lecturer_rebuild.log 2>&1
@@ -79,6 +79,6 @@
 # Backup restore test (18/11/26): Sunday 05:30 UTC — restores the newest Drive backup into ~/tmp, compares counts/bytes, checks the GPG bundle (structure only; the private key is on the PC) and the local archives; WhatsApp only on a FAIL
 30 5 * * 0 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Backup Restore Test" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/backup_restore_test.py" >> /home/ubuntu/smart_study_agent/logs/backup_restore_test.log 2>&1
 # WhatsApp bridge watch (19/11/26): logged out / no session → alert at once, disconnected or service down 10+ min → alert,
-# OUTSIDE WhatsApp (email to the owner via the Gmail send token; ntfy push if NTFY_TOPIC is set in .env); once per incident + one "חזר".
+# OUTSIDE WhatsApp (email to the owner via the Gmail send token; ntfy push if NTFY_TOPIC is set in .env); once per incident + one "חזר" ("back").
 # Reads status.json + the bridge journal; no LLM; not wrapped on purpose (it is the alert).
 */5 * * * * cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 timeout 120 venv/bin/python3 scripts/wa_bridge_watch.py >> /home/ubuntu/smart_study_agent/logs/wa_bridge_watch.log 2>&1

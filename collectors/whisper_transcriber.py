@@ -1,5 +1,5 @@
 """
-Whisper Transcriber - תמלול קבצי אודיו/וידאו עם OpenAI Whisper API
+Whisper Transcriber - transcribes audio/video files with the OpenAI Whisper API
 """
 
 import os

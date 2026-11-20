@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Dry Run - בודק מה המערכת תוריד בלי להוריד באמת
-שימושי לבדיקת הסינון!
+Dry Run - checks what the system would download without actually downloading
+Useful for testing the filtering!
 """
 
 import os
@@ -25,7 +25,7 @@ class DryRunChecker:
         self.password = os.getenv('TAU_PASSWORD')
     
     def login(self, page):
-        """התחברות ל-Panopto"""
+        """Log in to Panopto"""
         print("🔐 מתחבר ל-Panopto...")
         
         page.goto(f"{self.base_url}/Panopto/Pages/Auth/Login.aspx")
@@ -40,7 +40,7 @@ class DryRunChecker:
         print("✅ התחברות הצליחה!")
     
     def check_course(self, course_key: str):
-        """בודק מה יורד עבור קורס"""
+        """Checks what gets downloaded for a course"""
         course = self.config['courses'][course_key]
         
         if not course['sources']['panopto']['enabled']:
@@ -60,14 +60,14 @@ class DryRunChecker:
         print(f"{'='*70}\n")
         
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)  # headless=False כדי לראות
+            browser = p.chromium.launch(headless=False)  # headless=False so we can watch
             context = browser.new_context()
             page = context.new_page()
             
             try:
                 self.login(page)
                 
-                # לך לתיקייה
+                # go to the folder
                 folder_url = f"{self.base_url}/Panopto/Pages/Sessions/List.aspx#folderID=\"{folder_id}\""
                 page.goto(folder_url)
                 page.wait_for_load_state("networkidle")
@@ -75,7 +75,7 @@ class DryRunChecker:
                 import time
                 time.sleep(3)
                 
-                # חלץ כל הסרטונים
+                # extract all the videos
                 video_elements = page.query_selector_all('.session-row')
                 
                 print(f"📊 נמצאו {len(video_elements)} סרטונים בתיקייה\n")
@@ -88,7 +88,7 @@ class DryRunChecker:
                         title = element.query_selector('.detail-title').inner_text()
                         date = element.query_selector('.detail-date').inner_text()
                         
-                        # בדוק התאמה
+                        # check for a match
                         matches = []
                         if keywords:
                             for keyword in keywords:
@@ -119,7 +119,7 @@ class DryRunChecker:
                     except Exception as e:
                         print(f"⚠️  שגיאה בסרטון {i}: {e}\n")
                 
-                # סיכום
+                # summary
                 print("\n" + "="*70)
                 print("📊 סיכום:")
                 print("="*70)

@@ -1,5 +1,5 @@
 """
-agent/journal.py — "תבטל את מה שעשית" (19/11, secretary item 16). Deterministic, no LLM.
+agent/journal.py — "תבטל את מה שעשית" ("undo what you did") (19/11, secretary item 16). Deterministic, no LLM.
 
 Every action the bot itself takes for the owner is written here (data/action_journal.json) with its inverse:
     reminder     a reminder it created           → that reminder is switched off

@@ -1,6 +1,6 @@
 """
-create_shortcut.py — יוצר קיצור דרך על שולחן העבודה ל-Smart Study Agent
-הרצה חד-פעמית: python scripts/create_shortcut.py
+create_shortcut.py — creates a desktop shortcut for Smart Study Agent
+One-time run: python scripts/create_shortcut.py
 """
 
 import sys

@@ -1,6 +1,6 @@
 """
 Smart Study Agent — Dashboard
-הרצה: streamlit run dashboard/app.py
+Run: streamlit run dashboard/app.py
 
 One page, one row of tabs: password gate → the look (dashboard/ui/theme.py) →
 the top bar → alerts → tabs. Tabs are lazy (st.tabs on_change="rerun"): only the open tab's code runs
@@ -11,7 +11,7 @@ dashboard/core.py.
 import sys
 from pathlib import Path
 
-# טעינת .env לפני הכל — כדי שמפתחות API יהיו זמינים
+# Load .env before everything — so the API keys are available
 try:
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=Path(__file__).parent.parent / '.env', override=True)

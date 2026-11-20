@@ -1,5 +1,5 @@
 """
-AI Summarizer - מייצר סיכומים ממוקדים באמצעות Google Gemini API
+AI Summarizer - generates focused summaries using the Google Gemini API
 """
 
 import os
@@ -40,11 +40,11 @@ class AISummarizer:
         self.model_fast = "gemini-2.5-flash"
     
     def read_caption_file(self, caption_path: str) -> str:
-        """קורא קובץ כתוביות SRT ומחזיר טקסט עם timestamps"""
+        """Reads an SRT subtitle file and returns text with timestamps"""
         with open(caption_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # פרסר פשוט של SRT
+        # simple SRT parser
         lines = content.split('\n')
         
         parsed_captions = []
@@ -54,7 +54,7 @@ class AISummarizer:
         for line in lines:
             line = line.strip()
             
-            # זה שורת זמן?
+            # is this a timing line?
             if '-->' in line:
                 if current_text:
                     parsed_captions.append({
@@ -63,21 +63,21 @@ class AISummarizer:
                     })
                     current_text = []
                 
-                # חלץ זמן התחלה
+                # extract the start time
                 current_time = line.split('-->')[0].strip()
             
-            # זה טקסט?
+            # is this text?
             elif line and not line.isdigit():
                 current_text.append(line)
         
-        # הוסף את האחרון
+        # add the last one
         if current_text:
             parsed_captions.append({
                 'time': current_time,
                 'text': ' '.join(current_text)
             })
         
-        # צור טקסט מעוצב
+        # build the formatted text
         formatted_text = "\n".join([
             f"[{cap['time']}] {cap['text']}"
             for cap in parsed_captions
@@ -91,7 +91,7 @@ class AISummarizer:
     TEXT_SUFFIXES = ('.java', '.py', '.c', '.h', '.cpp', '.txt', '.md', '.csv', '.json', '.xml', '.sql')
 
     def read_pdf(self, pdf_path: str) -> str:
-        """קורא PDF ומחזיר טקסט. אם הוא סרוק → OCR עם Claude Vision."""
+        """Reads a PDF and returns text. If it is scanned → OCR with Claude Vision."""
         # Skip non-existent or inaccessible files gracefully
         from pathlib import Path as _Path
         if not _Path(pdf_path).exists():
@@ -135,7 +135,7 @@ class AISummarizer:
         return text
 
     def _extract_pdf_text(self, pdf_path: str) -> str:
-        """חילוץ טקסט רגיל מ-PDF (לא סרוק)."""
+        """Plain text extraction from a PDF (not scanned)."""
         text = ""
         try:
             with pdfplumber.open(pdf_path) as pdf:
@@ -153,7 +153,7 @@ class AISummarizer:
         return text
 
     def _ocr_pdf_with_claude(self, pdf_path: str, total_pages: int) -> str:
-        """ממיר עמודי PDF לתמונות ושולח ל-Gemini Vision לחילוץ טקסט."""
+        """Converts PDF pages to images and sends them to Gemini Vision to extract text."""
         import fitz  # pymupdf
 
         pages_to_ocr = min(total_pages, self.OCR_MAX_PAGES)
@@ -203,7 +203,7 @@ class AISummarizer:
         return ocr_text
     
     def extract_tricks_and_tips(self, transcript: str) -> List[str]:
-        """מזהה "טריקים" והערות חשובות בתמלול"""
+        """Detects "tricks" and important remarks in the transcript"""
         keywords = [
             'חשוב למבחן',
             'טעות נפוצה',
@@ -225,7 +225,7 @@ class AISummarizer:
         for i, line in enumerate(lines):
             for keyword in keywords:
                 if keyword in line.lower():
-                    # קח את המשפט המלא + שורה אחרי
+                    # take the full sentence + the following line
                     context = line
                     if i + 1 < len(lines):
                         context += " " + lines[i + 1]
@@ -240,39 +240,39 @@ class AISummarizer:
     def get_previous_summary_recap(self, course_key: str, kind: str,
                                      current_date: str = "", max_chars: int = 2000) -> str:
         """
-        מוצא את הסיכום הקודם של אותו קורס ואותו סוג (הרצאה/תרגול),
-        ומחזיר תקציר של הנושאים שנלמדו בו (עד max_chars תווים).
-        current_date: YYYY-MM-DD — לא כולל סיכומים מאותו תאריך ואילך.
-        """
+        Finds the previous summary of the same course and the same type (lecture/tutorial),
+        and returns a digest of the topics taught in it (up to max_chars characters).
+        current_date: YYYY-MM-DD — excludes summaries from that date onward.
+"""
         kind_dir_map = {'lecture': 'lectures', 'tutorial': 'tutorials'}
         kind_dir = kind_dir_map.get(kind, 'lectures')
         summary_dir = Path(f'data/summaries/{course_key}/{kind_dir}')
         if not summary_dir.exists():
             return ""
 
-        # מצא את כל קבצי .md לפי שם (שמתחיל ב-YYYY-MM-DD)
+        # find all .md files by name (starting with YYYY-MM-DD)
         files = sorted(summary_dir.glob('*.md'))
         if not files:
             return ""
 
-        # סנן: רק לפני התאריך הנוכחי
+        # filter: only before the current date
         if current_date:
             files = [f for f in files if f.name[:10] < current_date]
         if not files:
             return ""
 
-        # קח את האחרון
+        # take the last one
         prev_file = files[-1]
         try:
             content = prev_file.read_text(encoding='utf-8')
         except Exception:
             return ""
 
-        # חלץ שם הקובץ (ללא תאריך וסיומת) בתור כותרת
+        # extract the file name (without date and extension) as the title
         prev_title = prev_file.stem[11:].strip(' -') if len(prev_file.stem) > 10 else prev_file.stem
         prev_date = prev_file.stem[:10]
 
-        # נסה לחלץ את חלק "מפת השיעור" ו-"נוסחאות ומשפטים"
+        # try to extract the "מפת השיעור" and "נוסחאות ומשפטים" sections
         sections = {}
         current_section = None
         section_buf = []
@@ -288,7 +288,7 @@ class AISummarizer:
         if current_section and section_buf:
             sections[current_section] = '\n'.join(section_buf).strip()
 
-        # בחר את החלקים הכי שימושיים לתזכורת
+        # pick the parts most useful for a reminder
         recap_parts = []
         for sec_name in ['מפת השיעור', 'נוסחאות ומשפטים — דף עזר', 'מושגים חדשים שנלמדו']:
             for k, v in sections.items():
@@ -297,7 +297,7 @@ class AISummarizer:
                     break
 
         if not recap_parts:
-            # fallback: טקסט ראשון בלי frontmatter
+            # fallback: first text without frontmatter
             text = '\n'.join(
                 l for l in content.split('\n')
                 if l.strip() and not l.startswith('---') and not l.startswith('#!')
@@ -311,12 +311,12 @@ class AISummarizer:
     def _extract_relevant_pdf_section(pdf_content: str, lecture_title: str,
                                        max_chars: int = 12000) -> str:
         """
-        מחלץ את הקטע הרלוונטי מה-PDF לפי מספר ההרצאה שבכותרת.
-        אם לא מצא — מחזיר את 12K התווים הראשונים.
-        """
+        Extracts the relevant section from the PDF according to the lecture number in the title.
+        If not found — returns the first 12K characters.
+"""
         import re as _re
 
-        # חלץ מספר הרצאה מהכותרת
+        # extract the lecture number from the title
         num_match = _re.search(r'(?:הרצאה|lecture|שיעור)\s*(\d+)', lecture_title, _re.IGNORECASE)
         if not num_match:
             num_match = _re.search(r'\b(\d{1,2})\b', lecture_title)
@@ -325,7 +325,7 @@ class AISummarizer:
 
         lec_num = num_match.group(1)
 
-        # חפש "הרצאה N" / "Lecture N" בגוף ה-PDF
+        # look for "הרצאה N" / "Lecture N" in the PDF body
         patterns = [
             rf'הרצאה\s*{lec_num}\b',
             rf'Lecture\s*{lec_num}\b',
@@ -343,10 +343,10 @@ class AISummarizer:
         if best_pos == -1:
             return pdf_content[:max_chars]
 
-        # חלץ חלון סביב הסעיף שנמצא (עד הסעיף הבא או max_chars)
+        # extract a window around the section found (up to the next section or max_chars)
         section_text = pdf_content[best_pos:]
 
-        # נסה לחתוך בסוף הסעיף (לפני הרצאה N+1)
+        # try to cut at the end of the section (before lecture N+1)
         next_lec_num = str(int(lec_num) + 1)
         next_patterns = [
             rf'הרצאה\s*{next_lec_num}\b',
@@ -356,13 +356,13 @@ class AISummarizer:
         end_pos = len(section_text)
         for pat in next_patterns:
             m = _re.search(pat, section_text, _re.IGNORECASE | _re.MULTILINE)
-            if m and m.start() > 200:  # לא לחתוך מיד בהתחלה
+            if m and m.start() > 200:  # don't cut right at the start
                 end_pos = min(end_pos, m.start())
                 break
 
         section_text = section_text[:end_pos]
 
-        # אם הסעיף קצר מדי, הוסף גם הקשר לפני
+        # if the section is too short, add context before it as well
         if len(section_text) < 2000 and best_pos > 0:
             prefix = pdf_content[max(0, best_pos - 2000):best_pos]
             section_text = prefix + section_text
@@ -399,7 +399,7 @@ class AISummarizer:
         slides: str = "",
         covered: str = ""
     ) -> str:
-        """יוצר prompt לסיכום"""
+        """Creates the summary prompt"""
 
         board_section = ""
         if board_text.strip():
@@ -411,12 +411,12 @@ class AISummarizer:
 
         relevant_pdf = self._extract_relevant_pdf_section(pdf_content, lecture_title)
 
-        # הקשר בין-הרצאתי — קרא תוכן מפות השיעור מהרצאות קודמות
+        # cross-lecture context — read the lesson-map contents from previous lectures
         prev_topics = self._get_previous_topics(course_key or '', lecture_title)
         prev_section = f"\n\n{prev_topics}\n" if prev_topics else ""
 
-        # הנחיות לפי קורס (config/summary_styles.yaml) — Java בתוכנה 1, נוסחאות
-        # ודוגמאות פתורות בהסתברות, גרפים מתוארים במילים בכלכלה
+        # per-course guidelines (config/summary_styles.yaml) — Java in Software 1, formulas
+        # and worked examples in probability, graphs described in words in economics
         course_style_instruction = ""
         style = self.course_style(course_key)
         if style:
@@ -425,7 +425,7 @@ class AISummarizer:
 {style.strip()}
 """
 
-        # הערות משתמש מריצה קודמת
+        # user remarks from a previous run
         feedback_instruction = ""
         if user_feedback and user_feedback.strip():
             feedback_instruction = f"""
@@ -995,13 +995,13 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
         self._current_input_hash = input_hash  # used by save_summary to embed
 
-        # קרא תמלול
+        # read the transcript
         transcript = ""
         if caption_path and Path(caption_path).exists():
             transcript = self.read_caption_file(caption_path)
             print(f"✅ נקרא תמלול ({len(transcript)} תווים)")
 
-        # קרא PDF (תומך ב-path אחד או רשימה)
+        # read the PDF (supports a single path or a list)
         lecturer_parts: list = []
         slide_parts: list = []
         pdf_content = ""
@@ -1027,7 +1027,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             if len(parts) > 1:
                 print(f"  📚 שולב {len(parts)} PDFs ({len(pdf_content)} תווים סה\"כ)")
 
-        # קרא תוכן לוח מוידאו (אם סופק) — תומך גם ב-URL וגם בנתיב מקומי
+        # read the board content from video (if provided) — supports both a URL and a local path
         board_text = ""
         board_frame_paths: list = []
         board_usage = {}
@@ -1035,7 +1035,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             try:
                 from collectors.board_reader import extract_board_transcript
 
-                # קבע תיקיית שמירת frames לפי course_key + תאריך
+                # determine the frames save folder by course_key + date
                 _date_for_frames = ""
                 if caption_path:
                     import re as _re2
@@ -1056,11 +1056,11 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             except Exception as e:
                 print(f"⚠️  שגיאה בקריאת לוח: {e}")
 
-        # זהה טריקים
+        # detect tricks
         tricks = self.extract_tricks_and_tips(transcript)
         print(f"✅ זוהו {len(tricks)} הערות חשובות")
 
-        # חלץ תקציר מהשיעור הקודם (לתזכורת בראש הסיכום)
+        # extract a digest from the previous lesson (for the reminder at the top of the summary)
         lecture_date = ""
         if caption_path:
             import re as _re
@@ -1073,8 +1073,8 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
         if previous_recap:
             print(f"📎 נמצא סיכום קודם לתזכורת ({len(previous_recap)} תווים)")
 
-        # משוב מהדשבורד/טלגרם על סיכומים קודמים בקורס (👍/👎 + הערות) — עד 10/2026
-        # רק main.py קרא אותו, והצינור הלילי התעלם ממנו
+        # feedback from the dashboard/Telegram on previous summaries in the course (👍/👎 + remarks) — until 10/2026
+        # only main.py read it, and the nightly pipeline ignored it
         _used_pending_feedback = False
         if not (user_feedback or '').strip() and course_key:
             try:
@@ -1086,7 +1086,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             except Exception as _fe:
                 print(f"⚠️  קריאת משוב נכשלה: {_fe}")
 
-        # צור prompt
+        # create the prompt
         prompt = self.create_summary_prompt(
             course_name,
             lecture_title,
@@ -1102,7 +1102,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             covered=covered,
         )
         
-        # שלח ל-Gemini עם streaming
+        # send to Gemini with streaming
         print(f"🧠 שולח ל-Gemini API ({self.model})...")
 
         # Multi-model fallback chain. Verified via direct API test (2026-05-21):
@@ -1200,7 +1200,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
         print(f"✅ סיכום הופק! ({len(summary)} תווים) [model={used_model}]")
 
-        # בדיקת רצף ודילוגים עם Haiku (רק אם יש PDF של כל הסמסטר)
+        # continuity and skipped-topics check with Haiku (only if there is a PDF for the whole semester)
         lec_num = self._extract_lecture_number(lecture_title)
         # Apply notebook_offset: Panopto lecture N = notebook chapter N + offset
         actual_lec_num = (lec_num + notebook_offset) if lec_num else None
@@ -1217,7 +1217,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             print(f"📋 נוספו נושאים חסרים ({len(missing)} תווים)")
             summary += missing
 
-        # הדפס סיכום שימוש
+        # print a usage summary
         total_cost = 0.0
         for component, u in [('סיכום ראשי', summary_usage),
                               ('קריאת לוח', board_usage),
@@ -1277,11 +1277,11 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
     def build_summary_path(course_key: str, content_type: str, title: str,
                            date: str = "") -> str:
         """
-        בונה נתיב סיכום לפי המבנה:
+        Builds the summary path according to the structure:
         data/summaries/{course_key}/{lectures|tutorials}/{YYYY-MM-DD} - {title}.md
-        content_type: 'lecture' או 'tutorial'
-        date: 'YYYY-MM-DD' — אם ריק, משתמש בתאריך היום
-        """
+        content_type: 'lecture' or 'tutorial'
+        date: 'YYYY-MM-DD' — if empty, uses today's date
+"""
         import re as _re
         from datetime import date as _date
         folder = 'lectures' if content_type == 'lecture' else 'tutorials'
@@ -1291,10 +1291,10 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
     def _get_previous_topics(self, course_key: str, current_title: str) -> str:
         """
-        קורא את סעיף "מפת השיעור" מכל סיכום קודם בקורס.
-        מחזיר טקסט קומפקטי עם הנושאים שכבר נלמדו — כדי שהסיכום החדש יוכל
-        לקשר להם ולזהות אם חסר נושא צפוי ברצף.
-        """
+        Reads the "מפת השיעור" section from every previous summary in the course.
+        Returns a compact text with the topics already taught — so the new summary can
+        link to them and detect whether an expected topic in the sequence is missing.
+"""
         import re as _re
         summaries_dir = Path(f"data/summaries/{course_key}/lectures")
         if not summaries_dir.exists():
@@ -1306,28 +1306,28 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
         for f in files:
             stem = f.stem  # e.g. "2026-04-12 - מרצה_כ - הרצאה 1"
             if current_title in stem:
-                continue  # דלג על ההרצאה הנוכחית
+                continue  # skip the current lecture
 
-            # חלץ שם הרצאה (אחרי התאריך)
+            # extract the lecture name (after the date)
             label_parts = stem.split(' - ', 1)
             label = label_parts[1] if len(label_parts) > 1 else stem
 
             try:
                 text = f.read_text(encoding='utf-8')
-                # חפש סעיף "מפת השיעור" — מכיל רשימת נושאים עם timestamps
+                # look for the "מפת השיעור" section — it holds a list of topics with timestamps
                 map_match = _re.search(
                     r'##\s*מפת השיעור\s*\n(.*?)(?=\n##|\Z)',
                     text, _re.DOTALL
                 )
                 if map_match:
                     topics_raw = map_match.group(1).strip()
-                    # קח רק את שמות הנושאים (בלי timestamps)
+                    # take only the topic names (without timestamps)
                     topics = _re.sub(r'\[[\d:]+\]\s*', '', topics_raw)
-                    # קצץ לעד 600 תווים לכל הרצאה
+                    # cut to at most 600 characters per lecture
                     topics = topics[:600].strip()
                     parts.append(f"**{label}**: {topics}")
                 else:
-                    # אם אין מפה — קח שורות ראשונות של הסיכום
+                    # if there is no map — take the first lines of the summary
                     first_lines = '\n'.join(text.splitlines()[5:15]).strip()[:300]
                     parts.append(f"**{label}**: {first_lines}")
             except Exception:
@@ -1340,7 +1340,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
     @staticmethod
     def _extract_lecture_number(title: str) -> Optional[int]:
-        """מחלץ מספר הרצאה מהכותרת."""
+        """Extracts the lecture number from the title."""
         import re as _re
         m = _re.search(r'(?:הרצאה|lecture|שיעור)\s*(\d+)', title, _re.IGNORECASE)
         if m:
@@ -1351,9 +1351,9 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
     def _get_syllabus_section(self, pdf_content: str, lec_num: int,
                                window: int = 1) -> str:
         """
-        מחלץ את הרשימות של הרצאות lec_num-window עד lec_num מה-PDF.
-        window=1 → מחזיר גם את ההרצאה הקודמת כהקשר.
-        """
+        Extracts the notes of lectures lec_num-window through lec_num from the PDF.
+        window=1 → also returns the previous lecture as context.
+"""
         import re as _re
         parts = []
         for n in range(max(1, lec_num - window), lec_num + 1):
@@ -1383,11 +1383,11 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
                                transcript_sample: str,
                                lecture_title: str = "") -> tuple:
         """
-        בדיקת Gemini Flash:
-        1. אילו נושאים מרשימות ההרצאה הנוכחית חסרים בסיכום
-        2. האם המרצה דילג על נושאים שהיו צפויים לפי הרצף ברשימות
-        מחזיר (טקסט קצר לצרף לסיכום, usage_dict).
-        """
+        Gemini Flash check:
+        1. which topics from the current lecture's notes are missing from the summary
+        2. whether the lecturer skipped topics that were expected according to the notes' sequence
+        Returns (short text to attach to the summary, usage_dict).
+"""
         if not pdf_section.strip():
             return "", {}
         try:
@@ -1431,7 +1431,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
     @staticmethod
     def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-        """מחשב עלות ב-$ לפי מחירון Gemini (per million tokens)."""
+        """Computes the cost in $ according to the Gemini price list (per million tokens)."""
         # Prices per million tokens: (input, output)
         pricing = {
             'gemini-3.1-pro':   (3.50, 10.50),
@@ -1454,12 +1454,12 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
                               pdf_source_type: Optional[str] = None,
                               video_path: Optional[str] = None,
                               usage: Optional[dict] = None) -> str:
-        """בונה כותרת מקורות בראש הסיכום."""
+        """Builds the sources header at the top of the summary."""
         from datetime import date as _date
         lines = [f"*נוצר ב-{_date.today().strftime('%d/%m/%Y')}*\n"]
         lines.append("## חומרים שנסרקו לסיכום זה\n")
 
-        # ── תמלול ──
+        # ── transcript ──
         if transcript and caption_path:
             is_whisper = caption_path.endswith("_whisper.srt")
             how = "OpenAI Whisper (הוקלד אוטומטית — אין כתוביות מקוריות)" if is_whisper else "כתוביות Panopto (מקוריות)"
@@ -1480,7 +1480,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             }.get(pdf_source_type or '', 'PDF')
             lines.append(f"- **חומר כתוב** — `{pdf_name}` · {src_label} · {len(pdf_content):,} תווים")
 
-        # ── צילומי מסך (board) ──
+        # ── screenshots (board) ──
         if board_text and usage and usage.get('board'):
             bu = usage['board']
             n_frames = bu.get('frame_count', '?')
@@ -1501,7 +1501,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
     def save_summary(self, summary: str, output_path: str, course_name: str = "",
                      lecture_title: str = "", sources: dict = None) -> str:
-        """שומר סיכום כ-Markdown וגם כ-PDF. מחזיר נתיב ה-PDF."""
+        """Saves a summary as Markdown and also as PDF. Returns the PDF path."""
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         s = sources or {}
@@ -1520,7 +1520,7 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(full_content)
 
-        # צור PDF לצד ה-MD
+        # create the PDF next to the MD
         pdf_path = output_path.replace('.md', '.pdf')
         try:
             from generators.pdf_generator import markdown_to_pdf
@@ -1536,10 +1536,10 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
 
 
 if __name__ == "__main__":
-    # טסט
+    # test
     summarizer = AISummarizer()
     
-    # דוגמה
+    # example
     summary = summarizer.generate_summary(
         course_name="חדו\"א 2ב",
         lecture_title="אינטגרלים - הרצאה 5",
@@ -1547,5 +1547,5 @@ if __name__ == "__main__":
         pdf_path="data/moodle/calculus_2/lecture5_slides.pdf"
     )
     
-    # שמור
+    # save
     summarizer.save_summary(summary, "data/summaries/calculus_2_lecture5.md")

@@ -1,8 +1,8 @@
 """
-fetch_assignments_now.py — מוריד את כל קבצי המטלות וההגשות ממודל ומ-Wikidot,
-ובונה cache מלא ל-Obsidian.
+fetch_assignments_now.py — downloads all the assignment and submission files from Moodle and Wikidot,
+and builds a full cache for Obsidian.
 
-הרץ: python collectors/fetch_assignments_now.py
+Run: python collectors/fetch_assignments_now.py
 """
 from __future__ import annotations
 import json, os, re, sys, time
@@ -30,11 +30,11 @@ MOODLE_BASE = 'https://moodle.tau.ac.il'
 USERNAME = os.getenv('TAU_USERNAME', '')
 PASSWORD = os.getenv('TAU_PASSWORD', '')
 
-# ─── נתוני המטלות שנאספו ידנית מהדפדפן ──────────────────────────────────────
+# ─── Assignment data collected manually from the browser ──────────────────────
 TODAY = datetime(2026, 4, 27)
 
 ASSIGNMENTS_DATA = [
-    # ── מיקרו כלכלה א' ────────────────────────────────────────────────────────
+    # ── Microeconomics A ──────────────────────────────────────────────────────
     {
         'course_key': 'microeconomics',
         'course_name': "מיקרו כלכלה א'",
@@ -75,7 +75,7 @@ ASSIGNMENTS_DATA = [
         'submission_file_url': None,
         'notes': '⚠️ דחוף! הגשה 30/04 14:00',
     },
-    # ── מתמטיקה בדידה 2 ───────────────────────────────────────────────────────
+    # ── Discrete Mathematics 2 ────────────────────────────────────────────────
     {
         'course_key': 'discrete_math_2',
         'course_name': 'מתמטיקה בדידה 2',
@@ -100,7 +100,7 @@ ASSIGNMENTS_DATA = [
         'assignment_file_url': f'{MOODLE_BASE}/mod/assign/view.php?id=460783',
         'submission_file_url': None,
     },
-    # ── אלגברה לינארית 2ב ─────────────────────────────────────────────────────
+    # ── Linear Algebra 2B ─────────────────────────────────────────────────────
     {
         'course_key': 'linear_algebra_2',
         'course_name': 'אלגברה לינארית 2ב',
@@ -127,7 +127,7 @@ ASSIGNMENTS_DATA = [
         'assignment_file_url': f'{MOODLE_BASE}/pluginfile.php/590071/mod_assign/introattachment/0/%D7%AA%D7%A8%D7%92%D7%99%D7%9C%20%D7%91%D7%99%D7%AA%202.pdf?forcedownload=1',
         'submission_file_url': None,
     },
-    # ── חשבון דיפרנציאלי ואינטגרלי 2ב ────────────────────────────────────────
+    # ── Differential and Integral Calculus 2B ─────────────────────────────────
     {
         'course_key': 'calculus_2',
         'course_name': 'חשבון דיפרנציאלי ואינטגרלי 2ב',
@@ -142,7 +142,7 @@ ASSIGNMENTS_DATA = [
         'submission_file_url': f'{MOODLE_BASE}/pluginfile.php/570122/assignsubmission_file/submission_files/500687/%D7%97%D7%93%D7%95%D7%B4%D7%90%20hw1.pdf?forcedownload=1',
         'submission_filename': 'חדו״א hw1.pdf',
     },
-    # ── מבוא מורחב למדמ"ח ────────────────────────────────────────────────────
+    # ── Extended Intro to CS ──────────────────────────────────────────────────
     {
         'course_key': 'intro_to_cs',
         'course_name': 'מבוא מורחב למדמ"ח',
@@ -175,9 +175,9 @@ def _safe_name(s: str) -> str:
 
 def _check_grading(assign_urls: list[dict], ctx) -> dict[str, dict]:
     """
-    בודק ציונים והערות מרצה על מטלות שהוגשו.
-    מחזיר: {assign_url: {grade, feedback, graded_on}}
-    """
+    Checks grades and lecturer comments on submitted assignments.
+    Returns: {assign_url: {grade, feedback, graded_on}}
+"""
     from playwright.sync_api import TimeoutError as PWTimeout
     results = {}
     page = ctx.new_page()
@@ -190,7 +190,7 @@ def _check_grading(assign_urls: list[dict], ctx) -> dict[str, dict]:
             page.goto(url, wait_until='networkidle', timeout=20000)
             content = page.content()
 
-            # ציון
+            # Grade
             grade = None
             grade_patterns = [
                 r'ציון[:\s]+([0-9]+(?:\.[0-9]+)?)',
@@ -203,14 +203,14 @@ def _check_grading(assign_urls: list[dict], ctx) -> dict[str, dict]:
                     grade = m.group(1)
                     break
 
-            # בדוק אם ניתן ציון בכלל
+            # Check whether a grade was given at all
             grading_status = 'לא ניתן ציון'
             if 'ניתן ציון' in content and 'לא ניתן ציון' not in content:
                 grading_status = 'ניתן ציון'
             elif grade:
                 grading_status = 'ניתן ציון'
 
-            # הערות מרצה — חפש feedbackcomments
+            # Lecturer comments — look for feedbackcomments
             feedback = None
             fb_patterns = [
                 r'<div[^>]*class="[^"]*feedbackcomment[^"]*"[^>]*>(.*?)</div>',
@@ -225,7 +225,7 @@ def _check_grading(assign_urls: list[dict], ctx) -> dict[str, dict]:
                         feedback = raw
                         break
 
-            # קובץ פידבק מרצה
+            # Lecturer feedback file
             feedback_files = re.findall(r'href="([^"]+assignfeedback_file[^"]+)"', content)
 
             results[url] = {
@@ -247,7 +247,7 @@ def _check_grading(assign_urls: list[dict], ctx) -> dict[str, dict]:
 
 
 def _moodle_login(page, ctx):
-    """מתחבר למודל דרך SSO."""
+    """Logs in to Moodle via SSO."""
     page.goto(f'{MOODLE_BASE}/login/index.php', wait_until='networkidle', timeout=30000)
     for sel in ['a[href*="shibboleth"]', 'a[href*="saml"]', 'text=כניסה דרך שירות מרכזי']:
         try:
@@ -278,7 +278,7 @@ def _moodle_login(page, ctx):
 
 
 def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched: list[dict]):
-    """מוריד קבצים + בודק ציונים בתוך אותה session Playwright."""
+    """Downloads files + checks grades within the same Playwright session."""
     import requests as _req
     from playwright.sync_api import sync_playwright
 
@@ -295,7 +295,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
         _moodle_login(page, ctx)
         print('  ✅ מחובר')
 
-        # ── הורדות ──────────────────────────────────────────────────────────
+        # ── Downloads ───────────────────────────────────────────────────────
         print('\n  📥 מוריד קבצים...')
         for url, out_path in urls_and_paths:
             try:
@@ -304,7 +304,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                     print(f'  ⏭️  קיים: {out_path.name}')
                     continue
 
-                # Wikidot — ללא auth
+                # Wikidot — no auth
                 if 'wikidot.com' in url or 'wdfiles.com' in url:
                     r = _req.get(url, timeout=20)
                     if r.status_code == 200 and len(r.content) > 200:
@@ -314,7 +314,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                         print(f'  ⚠️  {out_path.name}: HTTP {r.status_code}')
                     continue
 
-                # Moodle pluginfile — ישיר דרך requests עם cookies
+                # Moodle pluginfile — directly via requests with cookies
                 if 'pluginfile.php' in url or 'forcedownload' in url:
                     cookies = {c['name']: c['value'] for c in ctx.cookies()}
                     s = _req.Session()
@@ -335,12 +335,12 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                     dl.save_as(str(out_path))
                     print(f'  ✅ {out_path.name}')
                 except Exception:
-                    # אם אין download trigger — ייתכן שזה דף HTML
-                    # נסה דרך requests עם cookies
+                    # If there is no download trigger — it may be an HTML page
+                    # Try via requests with cookies
                     cookies = {c['name']: c['value'] for c in ctx.cookies()}
                     s = _req.Session()
                     s.cookies.update(cookies)
-                    # גלה redirect לקובץ אמיתי
+                    # Detect a redirect to the real file
                     page.goto(url, timeout=20000)
                     final_url = page.url
                     if final_url != url and ('pluginfile' in final_url or final_url.endswith(('.pdf','.py','.zip'))):
@@ -360,7 +360,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
             except Exception as e:
                 print(f'  ❌ {out_path.name}: {e}')
 
-        # ── בדיקת ציונים והערות ──────────────────────────────────────────────
+        # ── Checking grades and comments ─────────────────────────────────────
         print('\n  🎓 בודק ציונים והערות מרצה...')
         grade_page = ctx.new_page()
         for entry in enriched:
@@ -371,7 +371,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                 grade_page.goto(url, wait_until='networkidle', timeout=20000)
                 content = grade_page.content()
 
-                # ציון
+                # Grade
                 grade = None
                 for pat in [
                     r'class="grade"[^>]*>([0-9]+(?:[.,][0-9]+)?)',
@@ -383,12 +383,12 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                         grade = m.group(1)
                         break
 
-                # סטטוס בדיקה
+                # Grading status
                 graded = 'ניתן ציון' in content and 'לא ניתן ציון' not in content
                 entry['grade'] = grade
                 entry['graded'] = graded
 
-                # הערות טקסטואליות
+                # Text comments
                 feedback = None
                 for pat in [
                     r'feedbackcomments[^>]*>(.*?)</div',
@@ -404,7 +404,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
                             break
                 entry['feedback'] = feedback
 
-                # קבצי פידבק מרצה
+                # Lecturer feedback files
                 fb_files = re.findall(r'href="([^"]*assignfeedback_file[^"]*)"', content)
                 entry['feedback_files'] = fb_files[:3]
 
@@ -425,7 +425,7 @@ def _download_and_check_grades(urls_and_paths: list[tuple[str, Path]], enriched:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_all():
-    """מוריד את כל הקבצים ובונה cache."""
+    """Downloads all the files and builds the cache."""
     print('\n📥 מוריד קבצי מטלות והגשות...\n')
 
     to_download: list[tuple[str, Path]] = []
@@ -440,7 +440,7 @@ def fetch_all():
         entry['local_path'] = None
         entry['submission_local_path'] = None
 
-        # קובץ המטלה (שאלות)
+        # The assignment file (questions)
         if a.get('assignment_file_url'):
             ext = Path(a['assignment_file_url'].split('?')[0]).suffix or '.pdf'
             fname = f"{_safe_name(a['title'])}_assignment{ext}"
@@ -448,24 +448,24 @@ def fetch_all():
             to_download.append((a['assignment_file_url'], out))
             entry['local_path'] = str(out)
 
-        # קובץ ההגשה שלי
+        # My submission file
         if a.get('submission_file_url'):
             fname = a.get('submission_filename', f"{_safe_name(a['title'])}_submission.pdf")
             out = course_dir / f"✅_{_safe_name(fname)}"
             to_download.append((a['submission_file_url'], out))
             entry['submission_local_path'] = str(out)
 
-        # קבצים נוספים (skeleton וכו')
+        # Extra files (skeleton etc.)
         for ef in a.get('extra_files', []):
             out = course_dir / ef['name']
             to_download.append((ef['url'], out))
 
         enriched.append(entry)
 
-    # הורד הכל + בדוק ציונים
+    # Download everything + check grades
     _download_and_check_grades(to_download, enriched)
 
-    # עדכן days_left בזמן ריצה אמיתי
+    # Update days_left at actual run time
     now = datetime.now()
     for e in enriched:
         if e.get('due_date'):
@@ -475,7 +475,7 @@ def fetch_all():
             except Exception:
                 pass
 
-    # שמור cache
+    # Save the cache
     cache = {'_ts': time.time(), 'assignments': enriched}
     CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
     print(f'\n✅ נשמר: {CACHE_PATH}')

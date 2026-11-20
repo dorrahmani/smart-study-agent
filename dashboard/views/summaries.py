@@ -51,14 +51,14 @@ def _read_sources_section(path: str) -> str:
         return ""
 
 def _read_md_preview(path: str) -> str:
-    """מחזיר את תוכן הסיכום ללא קטע המקורות/עלויות"""
+    """Returns the summary content without the sources/costs section"""
     try:
         content = Path(path).read_text(encoding='utf-8', errors='replace')
         # vault notes start with YAML frontmatter — don't render it as a heading
         fm = _re.match(r'^---\s*\n.*?\n---\s*\n', content, _re.DOTALL)
         if fm:
             content = content[fm.end():]
-        # חתוך לפני קטע המקורות
+        # Cut before the sources section
         cut = _re.search(r'\n## חומרים שנסרקו', content)
         return content[:cut.start()].strip() if cut else content[:4000].strip()
     except Exception:
@@ -66,7 +66,7 @@ def _read_md_preview(path: str) -> str:
 
 @st.cache_data
 def _semester_start() -> datetime:
-    """קורא תאריך תחילת הסמסטר מהקונפיג"""
+    """Reads the semester start date from the config"""
     try:
         import yaml
         with open(ROOT / 'config/courses.yaml', encoding='utf-8') as f:
@@ -76,7 +76,7 @@ def _semester_start() -> datetime:
             return datetime.strptime(str(s), '%Y-%m-%d')
     except Exception:
         pass
-    # fallback: המצא מהסיכום הקדום ביותר
+    # fallback: infer from the earliest summary
     try:
         all_s = get_all_summaries()
         dates = [s['date'] for s in all_s if s['date']]
@@ -89,16 +89,16 @@ def _semester_start() -> datetime:
     return datetime(2026, 4, 6)
 
 def _week_label(date_str: str) -> str:
-    """מחזיר תווית שבוע יחסית לסמסטר — שבוע ישראלי: ראשון עד שבת"""
+    """Returns a week label relative to the semester — an Israeli week: Sunday to Saturday"""
     try:
         import datetime as _dt
         dt = datetime.strptime(date_str, '%Y-%m-%d')
         sem_start = _semester_start()
-        # שבוע ישראלי מתחיל ביום ראשון: weekday()=6→ראשון, 0→שני, ..., 5→שבת
+        # The Israeli week starts on Sunday: weekday()=6→Sunday, 0→Monday, ..., 5→Saturday
         days_since_sunday = (dt.weekday() + 1) % 7
         week_start = dt - _dt.timedelta(days=days_since_sunday)
         week_num = max(1, ((week_start - sem_start).days) // 7 + 1)
-        week_thu = week_start + _dt.timedelta(days=4)  # חמישי = ראשון + 4
+        week_thu = week_start + _dt.timedelta(days=4)  # Thursday = Sunday + 4
         return f"שבוע {week_num} ({week_start.strftime('%d/%m')} – {week_thu.strftime('%d/%m')})"
     except Exception:
         return "תאריך לא ידוע"
@@ -288,7 +288,7 @@ def render() -> None:
                         else:
                             st.success(f"✅ נשלחו {len(filtered)} סיכומים ל-{len(addrs)} נמענים ({total} מיילים)")
 
-    # ── Bulk send panel — תומך במיילים מרובים ────────────────────────────────
+    # ── Bulk send panel — supports multiple emails ───────────────────────────
     n_selected = len(st.session_state.selected)
     with st.container():
         bc, bd, bb, ba = st.columns([3.5, 1.3, 0.55, 0.55])
@@ -463,7 +463,7 @@ def render() -> None:
                 pills_html += '</div>'
                 st.markdown(pills_html, unsafe_allow_html=True)
 
-                # כפתורי Streamlit — נסתרים ע"י CSS (גובה מינימלי), אבל פונקציונליים
+                # Streamlit buttons — hidden by CSS (minimum height), but functional
                 st.markdown('<div style="display:flex;gap:4px;margin-bottom:4px">', unsafe_allow_html=True)
                 _pcols = st.columns(len(PANELS))
                 for i, (name, emoji) in enumerate(PANELS):
@@ -478,11 +478,11 @@ def render() -> None:
                 st.markdown('<div style="border-top:1px solid var(--border);padding-top:10px;margin:4px 0 10px 0"></div>',
                             unsafe_allow_html=True)
 
-                # ── שליחה ──
+                # ── Send ──
                 if chosen == "שליחה":
                     send_result_key = f"send_result_{_uid(s)}"
 
-                    # ── כפתורי שליחה מהירה ─────────────────────────────────
+                    # ── Quick send buttons ─────────────────────────────────
                     _reviewer = _get_reviewer_email()
                     _all_course = _get_all_emails_for_course(s.get('course', ''))
                     _sc1, _sc2 = st.columns(2)
@@ -509,7 +509,7 @@ def render() -> None:
 
                     st.markdown("<div style='margin:8px 0;border-top:1px solid var(--border)'></div>", unsafe_allow_html=True)
 
-                    # ── שליחה ידנית לכתובת מותאמת אישית ───────────────────
+                    # ── Manual send to a custom address ───────────────────
                     with st.form(f"send_{_uid(s)}"):
                         recip_raw = st.text_area(
                             "או שלח לכתובת ספציפית:",
@@ -570,7 +570,7 @@ def render() -> None:
                             }
                             save_ratings(r); refresh()
 
-                # ── מקורות ──
+                # ── Sources ──
                 elif chosen == "מקורות":
                     sources_raw = _read_sources_section(s['path'])
                     if sources_raw:
@@ -578,7 +578,7 @@ def render() -> None:
                     else:
                         st.info("אין מידע על מקורות בסיכום זה")
 
-                # ── תצוגה מקדימה ──
+                # ── Preview ──
                 elif chosen == "תצוגה":
                     preview = _read_md_preview(s['path'])
                     if preview:
@@ -588,7 +588,7 @@ def render() -> None:
                     else:
                         st.info("לא ניתן לקרוא את הסיכום")
 
-                # ── הורדה ──
+                # ── Download ──
                 elif chosen == "הורדה":
                     d1, d2 = st.columns(2)
                     md_abs  = ROOT / s['path'] if not Path(s['path']).is_absolute() else Path(s['path'])
@@ -608,7 +608,7 @@ def render() -> None:
                         else:
                             st.info("אין PDF זמין")
 
-                # ── תגיות ──
+                # ── Tags ──
                 elif chosen == "תגיות":
                     cur_tags = ratings.get(s['rating_key'], {}).get('tags', [])
                     new_tags = st.multiselect("תגיות:", TAGS_OPTIONS,
@@ -618,7 +618,7 @@ def render() -> None:
                         r[s['rating_key']] = {**r.get(s['rating_key'],{}), 'tags': new_tags}
                         save_ratings(r); refresh()
 
-                # ── פעולות ──
+                # ── Actions ──
                 elif chosen == "פעולות":
                     st.markdown(f"**קובץ:** `{s['path']}`")
                     col_x, col_y = st.columns(2)
@@ -695,7 +695,7 @@ def render() -> None:
         for s in filtered:
             grouped_data[s['course_name']][_week_label(s['date'])].append(s)
 
-        # כפתור toggle פתח/סגור הכל — באותה שורה עם המונה
+        # Open/close-all toggle button — on the same row as the counter
         all_open = all(st.session_state.get(f"course_open_{cn}", True) for cn in grouped_data)
         toggle_label = "סגור הכל ▲" if all_open else "פתח הכל ▼"
         if st.button(toggle_label, key="toggle_all_courses"):
@@ -707,16 +707,16 @@ def render() -> None:
         for course_name, weeks in grouped_data.items():
             key = f"course_open_{course_name}"
             if key not in st.session_state:
-                st.session_state[key] = True  # פתוח כברירת מחדל
+                st.session_state[key] = True  # open by default
 
             n_items = sum(len(v) for v in weeks.values())
             n_weeks = len(weeks)
 
-            # כותרת קורס — שורה אחת עם כל הכפתורים
+            # Course header — one row with all the buttons
             all_in_course = [s for wk in weeks.values() for s in wk]
             is_open = st.session_state[key]
 
-            # RTL: עמודה ראשונה=ימין, אחרונה=שמאל → כותרת ראשונה (ימין), כפתורים אחרונים (שמאל)
+            # RTL: first column=right, last=left → header first (right), buttons last (left)
             hcol_title, hcol_sel, hcol_toggle = st.columns([7, 0.85, 0.75])
             with hcol_title:
                 st.markdown(
@@ -741,11 +741,11 @@ def render() -> None:
                 for week_lbl, week_summaries in sorted(weeks.items()):
                     w_key = f"week_open_{course_name}_{week_lbl}"
                     if w_key not in st.session_state:
-                        st.session_state[w_key] = False  # סגור כברירת מחדל
+                        st.session_state[w_key] = False  # closed by default
 
                     is_week_open = st.session_state[w_key]
 
-                    # כותרת שבוע עם toggle — לא st.expander (שמריץ תמיד)
+                    # Week header with a toggle — not st.expander (which always runs)
                     wcol_title, wcol_sel, wcol_desel, wcol_tog = st.columns([6.5, 0.75, 0.6, 0.7])
                     with wcol_title:
                         st.markdown(
@@ -770,7 +770,7 @@ def render() -> None:
                             st.session_state[w_key] = not is_week_open
                             st.rerun()
 
-                    # רק אם השבוע פתוח — מרנדר את הכרטיסיות
+                    # Only if the week is open — renders the cards
                     if is_week_open:
                         for s in week_summaries:
                             _render_summary_card(s, ratings, grouped=True)

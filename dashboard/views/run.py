@@ -107,7 +107,7 @@ def _run_now() -> None:
         if st.button("⏹ עצור", use_container_width=True, help="הורג כל תהליך pipeline פעיל"):
             killed = []
             try:
-                # Windows: taskkill כל python שמריץ main.py / run_now.py / scripts/
+                # Windows: taskkill every python running main.py / run_now.py / scripts/
                 result = subprocess.run(
                     ['powershell', '-Command',
                      'Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like "*main.py*" -or $_.CommandLine -like "*run_now*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $_.ProcessId }'],

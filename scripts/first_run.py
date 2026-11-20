@@ -1,6 +1,6 @@
 """
-first_run.py — ריצה ראשונה של הסמסטר
-מריץ את כל הקורסים עם days_back=7 (שבוע שלם) ומשחזר ל-2 בסיום.
+first_run.py — first run of the semester
+Runs all the courses with days_back=7 (a full week) and restores to 2 at the end.
 """
 
 import sys
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     print(f"   מחפש הרצאות מ-{DAYS_BACK_FIRST_RUN} ימים אחרונים")
     print(f"{'='*60}\n")
 
-    # שלב 1: הגדר days_back=7
+    # step 1: set days_back=7
     set_days_back(DAYS_BACK_FIRST_RUN)
     print(f"✅ days_back הוגדר ל-{DAYS_BACK_FIRST_RUN}")
 
@@ -46,6 +46,6 @@ if __name__ == '__main__':
         agent = SmartStudyAgent(CONFIG_PATH)
         agent.run_all()
     finally:
-        # שלב 2: שחזר ל-2 תמיד — גם אם הייתה שגיאה
+        # step 2: always restore to 2 — even if there was an error
         set_days_back(DAYS_BACK_NORMAL)
         print(f"\n✅ days_back שוחזר ל-{DAYS_BACK_NORMAL} (לריצות יומיות עתידיות)")

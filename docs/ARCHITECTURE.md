@@ -1,10 +1,6 @@
 # Architecture — how one message travels, and the gates on the way
 
-<div dir="rtl">
-
-> הודעה שלך בוואטסאפ עוברת מסלול קבוע: קודם כל מה שאפשר לענות בקוד (בלי מודל), רק אחר כך המוח (Gemini עם כלים שרק קוראים), ואז בודק עובדות לפני שהתשובה יוצאת. כל פעולה כלפי חוץ מחכה לכפתור ✅ שלך.
-
-</div>
+> Your WhatsApp message goes through a fixed route: first everything that can be answered in code (no model), only then the mind (Gemini with read-only tools), and then a fact checker before the answer goes out. Every outward action waits for your ✅ button.
 
 ## The flow
 
@@ -41,11 +37,11 @@ flowchart LR
 ### Step by step
 
 1. **Bridge** (`whatsapp/bridge.py`). A linked WhatsApp device, in its own virtualenv with no API keys. It decides who is talking from the sender id only (never a name, never the words). Anything not from an allowed number is dropped before a file is written. A group message gets through only with your real tag in a group you turned on.
-2. **Worker** (`whatsapp/worker.py`). Reads the spool, marks you active (for the catch-up), and opens one *interim* slot, so a slow turn says "רגע, בודק…" at most once (`agent/interim.py`).
-3. **Deterministic handlers first** (`agent/core.py`). Button payloads (✅, undo `jund:`), closures in your words ("ביטלתי"), "מה פספסתי" (`agent/catchup.py`), "תבטל את מה שעשית" (`agent/journal.py`), reminders whose time `agent/hetime.py` fully understands. No model.
+2. **Worker** (`whatsapp/worker.py`). Reads the spool, marks you active (for the catch-up), and opens one *interim* slot, so a slow turn says "רגע, בודק…" ("one moment, checking...") at most once (`agent/interim.py`).
+3. **Deterministic handlers first** (`agent/core.py`). Button payloads (✅, undo `jund:`), closures in your words ("ביטלתי", I cancelled), "מה פספסתי" (what did I miss) (`agent/catchup.py`), "תבטל את מה שעשית" (undo what you did) (`agent/journal.py`), reminders whose time `agent/hetime.py` fully understands. No model.
 4. **Fast path** (`agent/fastpath.py`). A whole short schedule question is answered from the stores (calendar, timetable with the university's changes, obligations). No model, under a second.
 5. **Emergency wrapper** (`agent/emergency.py`, `utils/llm_health.py`). If Gemini is out or the month is locked, the rest of the turn runs with every model call failing at once, and you get the closest data answer plus one honest line.
-6. **Subscription chat** (`agent/chat_sub.py`, opt-in). A strict allow-list of harmless shapes (a greeting, "תנסח לי…") may go to a personal subscription. It sees only your own recent words. Its reply must pass a check, or the API answers.
+6. **Subscription chat** (`agent/chat_sub.py`, opt-in). A strict allow-list of harmless shapes (a greeting, "תנסח לי…" (phrase this for me...)) may go to a personal subscription. It sees only your own recent words. Its reply must pass a check, or the API answers.
 7. **The mind** (`agent/mind.py`). Gemini with **read-only** tools. The only way out is `finish`; core turns a proposed action into a ✅ card. Static prompt blocks come first so the prefix is cacheable (cheaper input); the clock, open questions and the conversation come after. Caps: 7 rounds, 8 tools, `SSA_BRAIN_MAX_COST` a message, `SSA_BRAIN_DAY_CAP` a day, and 3 calls of the same tool at most.
 8. **Fact check** (`agent/factcheck.py`). Before anything goes out, the answer's sessions, weekdays, rooms, hours and deadlines are compared with the data. It fixes or flags. It never drops an answer.
 9. **Outbox** (`whatsapp/outbox.py`). One open numbered question at a time (the newest owns the digits; a quoted reply binds to its own; "which one?" when unsure; stale digits bind nothing). Quiet hours, the daily cap on proactive messages, muted kinds. Everything sent is logged.

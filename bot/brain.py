@@ -487,7 +487,7 @@ def classify(message: str, history: str = '') -> dict[str, Any]:
 
     history: optional formatted string of recent conversation context (last few turns)
              — improves classification of follow-up messages like "ועוד?", "פרט", "כן".
-    """
+"""
     fallback = {'action': 'ask', 'params': {}}
     history_block = ''
     if history and history.strip():

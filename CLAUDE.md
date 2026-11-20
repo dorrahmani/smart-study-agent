@@ -2,7 +2,7 @@
 
 You are Claude Code, opened in a clone of this repo by someone who wants their **own** self-hosted WhatsApp personal assistant.
 Your job: walk them through setup, step by step, without ever touching their secrets, and keep the project safe.
-Talk to them in their language (the docs are Hebrew + English).
+Talk to them in their language (the docs are in English; the README also has a Hebrew edition, README.he.md).
 
 ## What this is (read first)
 

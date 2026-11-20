@@ -1,19 +1,19 @@
 """
 pipelines/daily_full_update.py
 ================================
-ריצה יומית מלאה — הכל בתורנות:
+Full daily run — everything in turn:
 
-  1. Panopto-first discovery + SRT (חינם)
-  2. Whisper לכל מי שאין לו SRT עברי טוב (~$0.18/הרצאה)
-  3. Moodle: PDFs + auto-discovery של מטלות
-  4. סיכומים חדשים (Gemini, ~$0.30/הרצאה)
-  5. שליחת מייל לסיכומים חדשים (עם sent_log)
-  6. ייצוא לוולט Obsidian + relinker
-  7. NotebookLM: סנכרון קבצים חדשים למחברות
-  8. Brain enrichment: עוד מושגים → תוכן עשיר ב-Gemini Flash
+  1. Panopto-first discovery + SRT (free)
+  2. Whisper for everything without a good Hebrew SRT (~$0.18/lecture)
+  3. Moodle: PDFs + auto-discovery of assignments
+  4. New summaries (Gemini, ~$0.30/lecture)
+  5. Email the new summaries (with sent_log)
+  6. Export to the Obsidian vault + relinker
+  7. NotebookLM: sync new files to the notebooks
+  8. Brain enrichment: more concepts → rich content with Gemini Flash
 
-עלות מקסימלית: $5 כקאפ. אם המכסה תוצה — נעצור.
-לוג: data/daily_full_log.txt
+Maximum cost: $5 as a cap. If the quota is exhausted — we stop.
+Log: data/daily_full_log.txt
 
 Run:  python -m pipelines.daily_full_update
 """
@@ -329,10 +329,10 @@ def main(budget_usd: float = 5.0):
             log('  → no new summaries to email')
             return
 
-        # ── שער רעננות מבוסס-תוכן (נוסף 20/07/2026) ──
-        # לעולם לא לשלוח סיכום להרצאה ישנה מ-N ימים. מטפל אוטומטית בכל "יובש":
-        # חופשת אמצע-סמסטר, חג, שבוע מלחמה, וסוף סמסטר — בלי תאריך קבוע.
-        # עקיפה ידנית: SMART_STUDY_FORCE=1.
+        # ── content-based freshness gate (added 20/07/2026) ──
+        # Never send a summary for a lecture older than N days. Automatically handles any "dry spell":
+        # mid-semester break, a holiday, a war week, and the end of the semester — without a fixed date.
+        # Manual override: SMART_STUDY_FORCE=1.
         import re as _re
         from datetime import date as _date_cls, datetime as _dt
         max_age = 14

@@ -1,259 +1,217 @@
-<div dir="rtl">
+# ❓ FAQ, troubleshooting and glossary
 
-# ❓ שאלות נפוצות, תקלות ומילון
+The questions friends actually asked during setup, with a short answer and where the details are.
 
-השאלות שחברים באמת שאלו בהקמה, עם תשובה קצרה ואיפה הפירוט. **English below.**
+First of all, always: `python scripts/setup_check.py`. It knows which path you are on (`SSA_STUDY`), checks only what that path needs, and never prints a secret value.
 
-קודם כול, תמיד: `python scripts/setup_check.py`. הוא יודע באיזה מסלול אתה (`SSA_STUDY`), בודק רק את מה שצריך בו, ולא מדפיס אף ערך סודי.
+## 🚀 Setup
 
-## 🚀 הקמה
+**Where do I start?**
+`python -m venv venv`, `venv/bin/pip install -r requirements.txt`, then `python scripts/setup_check.py --init` (creates `.env` from `.env.example`). After that `SETUP.md` in order, and after each step `python scripts/setup_check.py` again. The easiest way: open the folder in Claude Code and ask "help me set this up" (it works from `CLAUDE.md` and does not touch the keys).
 
-**מאיפה מתחילים?**
-`python -m venv venv`, ‏`venv/bin/pip install -r requirements.txt`, ואז `python scripts/setup_check.py --init` (יוצר `.env` מ-`.env.example`). אחר כך `SETUP.md` לפי הסדר, ואחרי כל שלב שוב `python scripts/setup_check.py`. הכי קל: לפתוח את התיקייה ב-Claude Code ולבקש "help me set this up" (הוא עובד לפי `CLAUDE.md` ולא נוגע במפתחות).
+**A server or my computer?**
+A server is recommended: Oracle Cloud Always Free (Ubuntu 22.04 ARM), $0, and the bot is available 24/7. On your computer (Windows/Mac/Linux) you can try it and develop, but the bot answers only while the computer is on and connected (`SETUP.md` §0).
 
-**שרת או המחשב שלי?**
-שרת מומלץ: Oracle Cloud Always Free (‏Ubuntu 22.04 ARM), ‏$0, והבוט זמין 24/7. על המחשב (Windows/Mac/Linux) אפשר לנסות ולפתח, אבל הבוט עונה רק כשהמחשב דלוק ומחובר (`SETUP.md` §0).
+**Does it work on Windows?**
+Yes, for trying it out. On Windows the commands are `venv\Scripts\pip` and `venv\Scripts\python` instead of `venv/bin/...`, and the bridge runs with `venv_wa\Scripts\python whatsapp\bridge.py`. The `deploy/systemd/` services are Linux only, so on Windows you run the bridge and the worker in open windows (or in WSL). Scheduling the study layer on Windows: `python scheduler/install_task.py`. For an assistant that always answers: a server.
 
-**זה עובד על Windows?**
-כן, לניסיון. ב-Windows הפקודות הן `venv\Scripts\pip` ו-`venv\Scripts\python` במקום `venv/bin/...`, והגשר רץ ב-`venv_wa\Scripts\python whatsapp\bridge.py`. השירותים של `deploy/systemd/` הם ללינוקס בלבד, אז ב-Windows מריצים את הגשר וה-worker בחלונות פתוחים (או ב-WSL). תזמון של שכבת הלימודים ב-Windows: `python scheduler/install_task.py`. לעוזר שעונה תמיד: שרת.
+**Which Python?** 3.12 (3.11 at the least). `setup_check` prints `need 3.11+` if the version is old.
 
-**איזה Python?** ‏3.12 (לפחות 3.11). ‏`setup_check` כותב `need 3.11+` אם הגרסה ישנה.
+**How long does it take?** Path A (the assistant only): about an hour. Path B (studies): one to two more hours.
 
-**כמה זמן זה לוקח?** מסלול א׳ (רק העוזר): בערך שעה. מסלול ב׳ (לימודים): עוד שעה-שעתיים.
+**What is the difference between path A and B?**
+A = the assistant: a Gemini key, WhatsApp, Google Calendar. `SSA_STUDY=0`. B = adds the study layer (`SSA_STUDY=1`): university login, `config/courses.yaml`, Moodle and Panopto, email, NotebookLM. You can add B later too.
 
-**מה ההבדל בין מסלול א׳ לב׳?**
-א׳ = העוזר: מפתח Gemini, וואטסאפ, יומן גוגל. ‏`SSA_STUDY=0`. ב׳ = מוסיף את שכבת הלימודים (`SSA_STUDY=1`): התחברות לאוניברסיטה, `config/courses.yaml`, מודל ופנופטו, מייל, NotebookLM. אפשר להוסיף את ב׳ גם אחר כך.
-
-**איך מעדכנים לגרסה חדשה של הפרויקט?**
+**How do I update to a new version of the project?**
 ```bash
 git pull
-venv/bin/pip install -r requirements.txt          # בשרת: requirements.lock.txt
+venv/bin/pip install -r requirements.txt          # on the server: requirements.lock.txt
 PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 ```
-אם הקמת שער פריסה (`deploy/hooks/README.md`), מעדכנים במחשב ועושים `git push` לשרת, והשער מריץ את הבדיקות לפני שהקוד עולה.
+If you set up a deploy gate (`deploy/hooks/README.md`), update on your computer and `git push` to the server, and the gate runs the tests before the code goes live.
 
-**איך עוצרים את הבוט?** ‏`sudo systemctl stop smart-study-wa-worker` (ו-`smart-study-wa-bridge` כדי לנתק את וואטסאפ). צינור הלימודים: `SMART_STUDY_DISABLE=1`.
+**How do I stop the bot?** `sudo systemctl stop smart-study-wa-worker` (and `smart-study-wa-bridge` to disconnect WhatsApp). The study pipeline: `SMART_STUDY_DISABLE=1`.
 
-## 📱 וואטסאפ
+## 📱 WhatsApp
 
-**צריך סים נוסף?**
-כן. הבוט רץ כ**מכשיר מקושר** (כמו WhatsApp Web) של מספר וואטסאפ אחד (`WA_BOT_NUMBER`), ואתה מדבר איתו מהמספר שלך (`WA_OWNER`). הגשר מתעלם מהודעות שנשלחות מהחשבון שהוא מקושר אליו, אז על אותו מספר הוא לא ישמע אותך. צריך מספר שני לבוט: סים שני או eSIM זול. זה גם עדיף מבחינת חסימה (`SETUP.md` §א3).
+**Do I need an extra SIM?**
+Yes. The bot runs as a **linked device** (like WhatsApp Web) of one WhatsApp number (`WA_BOT_NUMBER`), and you talk to it from your own number (`WA_OWNER`). The bridge ignores messages sent from the account it is linked to, so on the same number it will not hear you. You need a second number for the bot: a second SIM or a cheap eSIM. This is also better in terms of bans (`SETUP.md` §A3).
 
-**מה לשים ב-WA_OWNER?** המספר האישי שלך, בפורמט בינלאומי וספרות בלבד: `9725XXXXXXXX` (בלי `+`, בלי מקפים, בלי 0 בהתחלה). זה המספר היחיד שהבוט מציית לו. ‏`WA_BOT_NUMBER` = המספר של הבוט, באותו פורמט.
+**What goes in WA_OWNER?** Your personal number, in international format and digits only: `9725XXXXXXXX` (no `+`, no dashes, no leading 0). It is the only number the bot obeys. `WA_BOT_NUMBER` = the bot's number, in the same format.
 
-**איך מחברים את הבוט לוואטסאפ?**
-1. ב-`.env`: ‏`WA_TRANSPORT=bridge`, ‏`WA_BOT_NUMBER`, ‏`WA_OWNER`.
-2. `python3.12 -m venv venv_wa && venv_wa/bin/pip install neonize`, ואז `WA_BOT_NUMBER=9725XXXXXXXX venv_wa/bin/python whatsapp/bridge.py`.
-3. קוד הצימוד נכתב ל-`data/wa_bridge/pair_code.txt`. בטלפון של הבוט: וואטסאפ ← מכשירים מקושרים ← קישור מכשיר ← "קישור עם מספר טלפון" ← הקוד.
-4. בשרת: השירותים מ-`deploy/systemd/` (`SETUP.md` §א3 סעיף 4).
+**How do I connect the bot to WhatsApp?**
+1. In `.env`: `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER`.
+2. `python3.12 -m venv venv_wa && venv_wa/bin/pip install neonize`, then `WA_BOT_NUMBER=9725XXXXXXXX venv_wa/bin/python whatsapp/bridge.py`.
+3. The pairing code is written to `data/wa_bridge/pair_code.txt`. On the bot's phone: WhatsApp → Linked devices → Link a device → "Link with phone number" → the code.
+4. On the server: the services from `deploy/systemd/` (`SETUP.md` §A3 step 4).
 
-**הבוט לא עונה לי.** לפי הסדר:
-1. `python scripts/setup_check.py`: ‏`WA_OWNER` נכון? יש "WhatsApp bridge session"?
-2. `systemctl is-active smart-study-wa-bridge smart-study-wa-worker` (שניהם צריכים `active`), ו-`journalctl -u smart-study-wa-bridge -n 50`.
-3. שלחת מהמספר של `WA_OWNER`, לא מהמספר של הבוט?
-4. בטלפון של הבוט: וואטסאפ ← מכשירים מקושרים. אם המכשיר נעלם, מוחקים את `data/wa_bridge/session.sqlite3` ומצמדים מחדש.
+**The bot does not answer me.** In order:
+1. `python scripts/setup_check.py`: is `WA_OWNER` correct? Is there a "WhatsApp bridge session"?
+2. `systemctl is-active smart-study-wa-bridge smart-study-wa-worker` (both should say `active`), and `journalctl -u smart-study-wa-bridge -n 50`.
+3. Did you send from the `WA_OWNER` number, not from the bot's number?
+4. On the bot's phone: WhatsApp → Linked devices. If the device disappeared, delete `data/wa_bridge/session.sqlite3` and pair again.
 
-**המספר יכול להיחסם?** כן, זה אפשרי: הגשר משתמש בספרייה לא רשמית (neonize). לכן מספר נפרד לבוט, ולא המספר הראשי שלך.
+**Can the number be banned?** Yes, it is possible: the bridge uses an unofficial library (neonize). That is why the bot gets its own number, and not your main one.
 
-**הגשר לא רואה את ה-.env?** בכוונה. הוא רץ ב-`venv_wa` נפרד, בלי גישה למפתחות ובלי קוד הפרויקט, ורק מעביר הודעות בתיקיות `data/wa_spool` ו-`data/wa_outbox`.
+**The bridge does not see the .env?** On purpose. It runs in a separate `venv_wa`, with no access to the keys and no project code, and only passes messages through the `data/wa_spool` and `data/wa_outbox` folders.
 
-**אפשר את ה-API הרשמי של מטא?** כן: WhatsApp Cloud API עם `WA_TOKEN` ו-`WA_PHONE_NUMBER_ID` (`docs/RUNBOOK.md` §7). דורש כתובת ציבורית ל-webhook.
+**Can I use Meta's official API?** Yes: the WhatsApp Cloud API with `WA_TOKEN` and `WA_PHONE_NUMBER_ID` (`docs/RUNBOOK.md` §7). It requires a public address for the webhook.
 
-**בן/בת זוג יכולים לדבר עם הבוט?** כן: `WA_ALLOWED` (המספר, ספרות) ו-`WA_PARTNER_NAME`. הם יכולים להציע אירועים ליומן ולקבל ממך הודעות, הכול באישור שלך (`SETUP.md` §א7).
+**Can a partner talk to the bot?** Yes: `WA_ALLOWED` (the number, digits) and `WA_PARTNER_NAME`. They can suggest calendar events and receive messages from you, all with your approval (`SETUP.md` §A7).
 
-**אפשר להכניס את הבוט לקבוצה?** כן: `SSA_GROUPS=1` ב-`.env`, ובקבוצה מתייגים את הבוט וכותבים "תפעיל כאן". הוא מגיב רק לתיוג שלך (`WA_OWNER`), לא לאחרים. "תכבה כאן" מכבה.
+**Can I add the bot to a group?** Yes: `SSA_GROUPS=1` in `.env`, and in the group tag the bot and write "תפעיל כאן" ("activate here"). It reacts only to a tag from you (`WA_OWNER`), not from others. "תכבה כאן" ("turn off here") turns it off.
 
-## 🔑 מפתחות ועלויות
+## 🔑 Keys and costs
 
-**מאיפה מפתח Gemini?** https://aistudio.google.com/apikey. להפעיל חיוב (Billing) ובאותו פרויקט ב-Google Cloud: ‏Billing ← Budgets להגדיר התראה. המפתח מתחיל ב-`AIza`.
+**Where does the Gemini key come from?** https://aistudio.google.com/apikey. Enable billing, and in the same Google Cloud project: Billing → Budgets, set an alert. The key starts with `AIza`.
 
-**איפה שמים מפתחות?** רק ב-`.env` (שם: `GEMINI_API_KEY=...`). לא בצ'אט, לא בקוד ולא בגיט. גם לא להדביק אותם ל-Claude Code: פותחים את `.env` ומדביקים בעצמך. ‏`setup_check` אומר רק אם המפתח קיים.
+**Where do keys go?** Only in `.env` (as `GEMINI_API_KEY=...`). Not in a chat, not in the code and not in git. Do not paste them into Claude Code either: open `.env` and paste them yourself. `setup_check` only says whether the key exists.
 
-**צריך מפתח OpenAI?** לא חובה. הוא משמש רק לתמלול: **הודעות קוליות** לבוט, והרצאות בלי כתוביות בשכבת הלימודים. בלי `OPENAI_API_KEY` הודעות קוליות לא מתומללות (כותבים לבוט בטקסט), והרצאות בלי כתוביות מדולגות. `SMART_STUDY_DISABLE_WHISPER=1` = אף פעם לא לשלם על תמלול.
+**Do I need an OpenAI key?** Not required. It is used only for transcription: **voice messages** to the bot, and lectures without captions in the study layer. Without `OPENAI_API_KEY` voice messages are not transcribed (write to the bot in text), and lectures without captions are skipped. `SMART_STUDY_DISABLE_WHISPER=1` = never pay for transcription.
 
-**כמה זה עולה?** בערך ‎$3–10 לחודש לעוזר בלבד, ‎$15–30 עם הלימודים. פירוט: [COSTS.md](COSTS.md).
-| מה | בערך |
+**How much does it cost?** About $3-10 a month for the assistant alone, $15-30 with studies. Details: [COSTS.md](COSTS.md).
+
+| What | About |
 |---|---|
-| הודעה למוח (Gemini) | ‎$0.005–0.015 |
-| שאלות לוז, תזכורות, כפתורים, ביטול, "מה פספסתי" | ‎$0 (בלי מודל) |
-| שאלה מהרשת | ‎$0 מובנית · ‎~$0.0005 כללית |
-| שרת Oracle Always Free | ‎$0 |
-| סיכום שיעור עם כתוביות או תמלול מקומי / תמלול בתשלום | ‎$0.08 / ‎$0.40–0.50 |
+| A message to the mind (Gemini) | $0.005-0.015 |
+| Schedule questions, reminders, buttons, undo, "what did I miss" | $0 (no model) |
+| A web question | $0 built-in · ~$0.0005 general |
+| Oracle Always Free server | $0 |
+| A lecture summary with captions or local transcription / paid transcription | $0.08 / $0.40-0.50 |
 
-**איך מוזילים?** כתוביות קודם ותמלול מקומי בשרת (`SSA_LOCAL_ASR`), המסלול המהיר, חיפוש ברשת בפייתון, NotebookLM קודם לשאלות על החומר, ותקרות. כל אלה דולקים כברירת מחדל. מנוי Gemini אישי (`SSA_SUBSCRIPTION=1`) **כבוי** כברירת מחדל: תנאי המנוי חלים עליך, הוא איטי יותר, וטקסט של אחרים לעולם לא עובר אליו (`COSTS.md` §5).
+**How do I make it cheaper?** Captions first and local transcription on the server (`SSA_LOCAL_ASR`), the fast path, web search in Python, NotebookLM first for questions about the material, and caps. All of these are on by default. A personal Gemini subscription (`SSA_SUBSCRIPTION=1`) is **off** by default: the subscription's terms apply to you, it is slower, and other people's text never goes to it (`COSTS.md` §5).
 
-**החשבונית גבוהה מהדשבורד?** זה קרה: עד שכל הקריאות נרשמו יחד עם טוקני החשיבה, החשבונית הייתה גבוהה מהיומן. לסמוך על החשבונית ולהגדיר התראת תקציב ב-Google Cloud.
+**Is the invoice higher than the dashboard?** It happened: until every call was logged together with the thinking tokens, the invoice was higher than the ledger. Trust the invoice and set a budget alert in Google Cloud.
 
-**יש תקרה?** כן. תקרה קשיחה של ‎$50 לחודש (`utils/budget.py`, `SSA_MONTH_CAP_USD`), ואפשר תקרה אחרת לכל חודש ב-`config/budget_caps.json`. מעליה כל הקריאות בתשלום נעצרות (`data/budget_lock.json`), מגיעה הודעה, והבוט עובר למצב חירום ועונה מהנתונים. בנוסף `SSA_BRAIN_DAY_CAP` (ברירת מחדל ‎$1 ליום לשיחות) ו-`SSA_BRAIN_MAX_COST` (‏‎$0.10 להודעה). כל קריאה נרשמת ב-`data/usage.jsonl`.
+**Is there a cap?** Yes. A hard cap of $50 a month (`utils/budget.py`, `SSA_MONTH_CAP_USD`), and you can set a different cap for each month in `config/budget_caps.json`. Above it every paid call stops (`data/budget_lock.json`), a message arrives, and the bot moves to emergency mode and answers from the data. In addition `SSA_BRAIN_DAY_CAP` (default $1 a day for conversations) and `SSA_BRAIN_MAX_COST` ($0.10 per message). Every call is logged in `data/usage.jsonl`.
 
-**מפתח דלף לגיט?** להחליף אותו מיד (revoke ב-AI Studio ומפתח חדש). מחיקה ב-commit הבא לא מוחקת מההיסטוריה (`SECURITY.md`).
+**A key leaked to git?** Replace it immediately (revoke in AI Studio and get a new key). Deleting it in the next commit does not delete it from history (`SECURITY.md`).
 
-## 📅 יומן גוגל
+## 📅 Google Calendar
 
-**איך מחברים?** ‏console.cloud.google.com ← פרויקט ← להפעיל Google Calendar API ← OAuth consent screen (‏External, להוסיף את עצמך כ-test user, ואז **In production**) ← Credentials ← OAuth client ID מסוג **Desktop app** ← להוריד JSON ← `python scripts/gcal_auth.py <client.json>`. נשמר ב-`config/gcal_token.json` (`SETUP.md` §א4).
+**How do I connect?** console.cloud.google.com → a project → enable the Google Calendar API → OAuth consent screen (External, add yourself as a test user, then **In production**) → Credentials → an OAuth client ID of type **Desktop app** → download the JSON → `python scripts/gcal_auth.py <client.json>`. Saved to `config/gcal_token.json` (`SETUP.md` §A4).
 
-**הטוקן מת אחרי שבוע?** האפליקציה נשארה ב-Testing: שם הטוקן פג אחרי 7 ימים. להעביר ל-In production ולהריץ שוב את `gcal_auth.py`.
+**The token died after a week?** The app stayed in Testing: there the token expires after 7 days. Move it to In production and run `gcal_auth.py` again.
 
-**בשרת?** מתחברים במחשב (צריך דפדפן), ואז `scp config/gcal_token.json` לשרת ו-`chmod 600`.
+**On a server?** Sign in on your computer (a browser is needed), then `scp config/gcal_token.json` to the server and `chmod 600`.
 
-## 🛡️ אבטחה ופרטיות
+## 🛡️ Security and privacy
 
-**מי יכול לשלוח הודעה בשמי?** אף אחד בלי ✅ שלך. הבוט מציית רק ל-`WA_OWNER`. כל הודעה לאדם אחר, אירוע ביומן או הרשמה באתר מוצגים לך קודם, ויוצאים רק אחרי לחיצה על כפתור ✅. מילים כמו "כן" בצ'אט לא נחשבות אישור.
+**Who can send a message in my name?** Nobody without your ✅. The bot obeys only `WA_OWNER`. Every message to another person, calendar event or sign-up on a site is shown to you first, and goes out only after you press the ✅ button. Words like "yes" in the chat do not count as approval.
 
-**יש לזה גישה לסיסמאות שלי?** לא. המפתחות שלך נמצאים רק ב-`.env` על השרת שלך. בהרשמה באתרים (`agent/web_agent.py`) הוא אף פעם לא מקליד סיסמה, אשראי, ת"ז או קוד SMS, ולא לוחץ "לתשלום". במסלול א׳ אין על המכונה בכלל פרטי אוניברסיטה. במסלול ב׳ `TAU_PASSWORD` נמצא ב-`.env` שלך בלבד.
+**Does it have access to my passwords?** No. Your keys exist only in `.env` on your own server. When signing up on sites (`agent/web_agent.py`) it never types a password, credit card, ID number or SMS code, and does not click "pay". On path A there are no university details on the machine at all. On path B `TAU_PASSWORD` is in your `.env` only.
 
-**מישהו שולח לבוט מייל או הודעה עם הוראות?** טקסט ממייל, אתר, מסמך או אדם אחר הוא מידע, לא פקודה. הכלים של המודל רק קוראים, ופעולה עוברת רק אם בדיקה נפרדת, שרואה רק את ההודעות שלך, מאשרת שביקשת אותה (`SECURITY.md`).
+**Someone sends the bot an email or a message with instructions?** Text from an email, site, document or another person is data, not a command. The model's tools only read, and an action goes through only if a separate check, which sees only your own messages, confirms that you asked for it (`SECURITY.md`).
 
-**מישהו אחר רואה את ההודעות שלי?** לא. הכול רץ על השרת שלך עם המפתחות שלך. מי שנתן לך את הפרויקט לא רואה כלום.
+**Does anyone else see my messages?** No. Everything runs on your server with your keys. Whoever gave you the project sees nothing.
 
-**אפשר להעלות לגיטהאב?** כן, ל-repo **פרטי**. לפני כל push: ‏`python scripts/release_scan.py` (חייב "0 finding(s)"), ופעם אחת `python scripts/install_git_hooks.py` כדי שכל push יריץ את הסריקה. לעולם לא להעלות `.env`, קבצי טוקן או `data/`.
+**Can I upload to GitHub?** Yes, to a **private** repo. Before every push: `python scripts/release_scan.py` (must say "0 finding(s)"), and once `python scripts/install_git_hooks.py` so that every push runs the scan. Never upload `.env`, token files or `data/`.
 
-**הדשבורד חשוף?** לא. הוא מאזין רק ל-127.0.0.1 ודורש `DASHBOARD_PASSWORD`. מבחוץ: מנהרת SSH או Tailscale Serve (לא Funnel).
+**Is the dashboard exposed?** No. It listens only on 127.0.0.1 and requires `DASHBOARD_PASSWORD`. From outside: an SSH tunnel or Tailscale Serve (not Funnel).
 
-## 🎓 שכבת הלימודים (SSA_STUDY)
+## 🎓 The study layer (SSA_STUDY)
 
-**מה זה SSA_STUDY?** הדגל של שכבת הלימודים. `0` (ברירת המחדל) = רק העוזר, בלי שום קוד לימודים. `1` = מעקב מטלות ובחנים ממודל (גם מטלה שהוזכרה במייל, תוך 15 דקות), סולם דדליינים, ציונים ומשוב הבודק, סטטיסטיקת מבחנים, עדכונים מהאוניברסיטה רק לקבוצה שלך, סיכומי שיעורים מפנופטו, אתר קורס, NotebookLM, מבחנים ומערכת שעות. הכול ב-[FEATURES.md](FEATURES.md) §2.
+**What is SSA_STUDY?** The flag of the study layer. `0` (the default) = the assistant only, with no study code at all. `1` = tracking of assignments and quizzes from Moodle (including an assignment mentioned in an email, within 15 minutes), a deadline ladder, grades and the grader's feedback, exam statistics, updates from the university for your group only, lecture summaries from Panopto, a course site, NotebookLM, exams and a timetable. All in [FEATURES.md](FEATURES.md) §2.
 
-**אפשר שכל הדדליינים ייכנסו ליומן שלי לבד?** כן, אבל רק אם תבקש במפורש: `config/assistant.yaml` עם `auto_deadlines_to_calendar: true` (מהדוגמה `config/assistant.example.yaml`). רק האירועים האלה נכתבים בלי כרטיס, ושום דבר לא נמחק: מה שהוגש מסומן "✅ הוגש". כל פעולה אחרת ביומן עדיין מחכה ל-✅.
+**Can every deadline enter my calendar automatically?** Yes, but only if you explicitly ask: `config/assistant.yaml` with `auto_deadlines_to_calendar: true` (from the example `config/assistant.example.yaml`). Only these events are written without a card, and nothing is deleted: what was submitted is marked "✅ הוגש" ("submitted"). Every other calendar action still waits for ✅.
 
-**אני לא בתל אביב.** העוזר (מסלול א׳) עובד בכל מקום. חלק מההתאמות הן בקבצים: `SSA_UNIVERSITY`, `config/university_pages.json`, `config/campus.json`, `config/student_lines.txt`. שכבת הלימודים נבנתה לת"א: באוניברסיטה אחרת צריך להתאים את טופס ההתחברות ב-`collectors/panopto_collector.py` ו-`collectors/moodle_collector.py` ואת `settings.panopto.base_url` / `settings.moodle.base_url` ב-`config/courses.yaml`. ‏my.tau והמייל האוניברסיטאי ספציפיים לת"א (`SETUP.md` §ב5).
+**I am not in Tel Aviv.** The assistant (path A) works anywhere. Some of the adaptations are in files: `SSA_UNIVERSITY`, `config/university_pages.json`, `config/campus.json`, `config/student_lines.txt`. The study layer was built for TAU: at another university you need to adapt the login form in `collectors/panopto_collector.py` and `collectors/moodle_collector.py` and `settings.panopto.base_url` / `settings.moodle.base_url` in `config/courses.yaml`. my.tau and the university email are specific to TAU (`SETUP.md` §B5).
 
-**איך מוסיפים קורס?** ב-`config/courses.yaml`: ‏`name`, ‏`course_code`, ‏`my_sessions` (יום, שעה, קבוצה), ‏`sources.panopto.folder_id` (`python scripts/find_panopto_folders.py`), ‏`sources.moodle.course_id`. ואז את המפתח שלו ל-`SSA_ACTIVE_COURSES` (`SETUP.md` §ב2).
+**How do I add a course?** In `config/courses.yaml`: `name`, `course_code`, `my_sessions` (day, hour, group), `sources.panopto.folder_id` (`python scripts/find_panopto_folders.py`), `sources.moodle.course_id`. Then its key into `SSA_ACTIVE_COURSES` (`SETUP.md` §B2).
 
-**NotebookLM לא מתחבר בשרת?** במחשב `python -m notebooklm login`, או בשרת `scripts/vnc_notebooklm_login.sh`, או להעתיק את `~/.notebooklm/profiles/default/storage_state.json`. ‏`scripts/nlm_keepalive.py` בודק ומתריע. בלי NotebookLM הסיכומים והמיילים ממשיכים.
+**NotebookLM does not connect on the server?** On your computer `python -m notebooklm login`, or on the server `scripts/vnc_notebooklm_login.sh`, or copy `~/.notebooklm/profiles/default/storage_state.json`. `scripts/nlm_keepalive.py` checks and alerts. Without NotebookLM the summaries and emails continue.
 
-## 🧩 הרחבה וקוד
+## 🧩 Extending and code
 
-**איך מוסיפים שכבה משלי?** דגל ב-`config/features.py`, מודול ב-`agent/`, הכלים שלה ב-`TOOLS` של `agent/mind.py` (מסוננים ב-`active_tools()`), והבדיקות התקופתיות ב-`tick_list()` של `whatsapp/worker.py`. שכבה כבויה לא נטענת. שכבת הלימודים בנויה כך, אז מעתיקים ממנה (`README.md` "בנוי בשכבות").
+**How do I add a layer of my own?** A flag in `config/features.py`, a module in `agent/`, its tools in `TOOLS` of `agent/mind.py` (filtered by `active_tools()`), and the periodic checks in `tick_list()` of `whatsapp/worker.py`. A layer that is off is not loaded. The study layer is built this way, so copy from it (`README.md` "Built in layers").
 
-**איזה מודל?** רק Gemini (`GEMINI_API_KEY`). אין ספק LLM אחר בקוד, ואין להוסיף (`CLAUDE.md`). OpenAI משמש רק לתמלול קול.
+**Which model?** Only Gemini (`GEMINI_API_KEY`). There is no other LLM provider in the code, and none should be added (`CLAUDE.md`). OpenAI is used only for voice transcription.
 
-**מה זה "קלוד: …"?** בקשה לשנות את הבוט עצמו. היא רצה בסוכן קוד (Claude Code CLI) תחת משתמש מבודד עם חומת אש (`deploy/claude_agent/`), בענף נפרד, עוברת את כל הבדיקות ומחכה ל-✅. בלי ההגדרה הזו "קלוד:" לא משנה כלום, והשאר עובד.
+**What is "קלוד: ..." ("Claude: ...")?** A request to change the bot itself. It runs in a coding agent (Claude Code CLI) under an isolated user with a firewall (`deploy/claude_agent/`), on a separate branch, passes all the tests and waits for ✅. Without this setup "קלוד:" changes nothing, and the rest works.
 
-**איך מריצים בדיקות?** ‏`PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only` (מסלול א׳), ‏`python -m tests.test_safety_critical` (השער), ‏`python -m tests.conversation_evals`, ‏`python -m pytest tests/ -q`.
+**How do I run the tests?** `PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only` (path A), `python -m tests.test_safety_critical` (the gate), `python -m tests.conversation_evals`, `python -m pytest tests/ -q`.
 
-**בדיקה נכשלת אחרי שמחקתי קורס מהדוגמה?** חלק מהבדיקות מכירות את מפתחות הקורסים של `config/courses.example.yaml`. להחזיר אותם לדוגמה (את הקורסים שלך שמים ב-`config/courses.yaml`).
+**A test fails after I deleted a course from the example?** Some tests know the course keys of `config/courses.example.yaml`. Restore them in the example (put your own courses in `config/courses.yaml`).
 
-## 🤖 מה העוזר יודע לעשות (ודוגמאות)
+## 🤖 What the assistant can do (and examples)
 
-| תחום | לכתוב לו |
+The assistant is driven in Hebrew; the examples are what you write to it, with English glosses.
+
+| Area | Write to it |
 |---|---|
-| 📅 יומן | "תוסיף ליומן מחר ב-20 ארוחת ערב" · "מה יש לי השבוע" · "תזיז את הפגישה למחר" |
-| ⏰ תזכורות | "תזכיר לי בעוד שעה להתקשר לאמא" · "כל יום ב-8 לקחת ויטמין" · "אילו תזכורות יש לי" |
-| ⏳ משימות | "מה מחכה לי" · "ביטלתי את המלון" (סוגר את הפריט) · "תבטל את מה שעשית" (ביטול הפעולה האחרונה של הבוט) · "מה פספסתי" |
-| 🧳 נסיעות | "אני בים המלח מ-26 עד 29" · "מה אני צריך לסיים לפני ים המלח?" |
-| 📎 הקבצים שלך | "מה מספר ההזמנה של המלון?" (מכל קובץ או קישור ששלחת) |
-| 🌐 רשת | "מה מזג האוויר מחר בחיפה" · "כמה זה 100 דולר בשקלים" · "מתי נכנסת שבת" |
-| 🛠️ על עצמו | "איך עובד הגיבוי?" · "מה העלות החודשית?" (רק לבעלים) |
-| 🤝 הודעות ותיאומים | "תתאם עם יוסי פגישה בשבוע הבא" · "שלח לאמא ש…" · כרטיס איש קשר + "תיצור איתם קשר" (הכול עם ✅) |
-| 🌐 הרשמה באתר | "תרשום אותי ל<קישור>": בדפדפן אמיתי, עד לפני התשלום (צריך `playwright install chromium`) |
-| 🔗 קריאה | קישור, קובץ, צילום: "מה הדדליין פה?", "תסכם לי". הודעה קולית: עם `OPENAI_API_KEY` |
-| 🧠 זיכרון | "תזכור ש…" · "מה אתה זוכר עליי" |
-| 🔕 שקט | "תפסיק לשאול על זה" · שעות שקט ב-`SSA_QUIET_HOURS` (ברירת מחדל 23-7) |
-| 🎓 לימודים (`SSA_STUDY=1`) | "מה חסר לי?" · "מה אני צריך להגיש?" · "יצא פתרון לתרגיל 3?" · "על מה אני צריך להתמקד?" · "על מה לשים את הכסף בהסתברות?" · "בחן אותי" |
+| 📅 Calendar | "תוסיף ליומן מחר ב-20 ארוחת ערב" (add dinner to the calendar tomorrow at 20:00) · "מה יש לי השבוע" (what do I have this week) · "תזיז את הפגישה למחר" (move the meeting to tomorrow) |
+| ⏰ Reminders | "תזכיר לי בעוד שעה להתקשר לאמא" (remind me in an hour to call mom) · "כל יום ב-8 לקחת ויטמין" (every day at 8 take a vitamin) · "אילו תזכורות יש לי" (which reminders do I have) |
+| ⏳ Tasks | "מה מחכה לי" (what is waiting for me) · "ביטלתי את המלון" (I cancelled the hotel; closes the item) · "תבטל את מה שעשית" (undo what you did; reverses the bot's last action) · "מה פספסתי" (what did I miss) |
+| 🧳 Trips | "אני בים המלח מ-26 עד 29" (I am at the Dead Sea from the 26th to the 29th) · "מה אני צריך לסיים לפני ים המלח?" (what do I need to finish before the Dead Sea?) |
+| 📎 Your files | "מה מספר ההזמנה של המלון?" (what is the hotel booking number?), from any file or link you sent |
+| 🌐 Web | "מה מזג האוויר מחר בחיפה" (what is the weather tomorrow in Haifa) · "כמה זה 100 דולר בשקלים" (how much is 100 dollars in shekels) · "מתי נכנסת שבת" (when does Shabbat start) |
+| 🛠️ About itself | "איך עובד הגיבוי?" (how does the backup work?) · "מה העלות החודשית?" (what is the monthly cost?), owner only |
+| 🤝 Messages and coordination | "תתאם עם יוסי פגישה בשבוע הבא" (arrange a meeting with Yossi next week) · "שלח לאמא ש..." (tell mom that...) · a contact card + "תיצור איתם קשר" (contact them), all with ✅ |
+| 🌐 Site sign-up | "תרשום אותי ל<קישור>" (sign me up to <link>): in a real browser, up to just before payment (needs `playwright install chromium`) |
+| 🔗 Reading | A link, file or photo: "מה הדדליין פה?" (what is the deadline here?), "תסכם לי" (summarize for me). A voice message: with `OPENAI_API_KEY` |
+| 🧠 Memory | "תזכור ש..." (remember that...) · "מה אתה זוכר עליי" (what do you remember about me) |
+| 🔕 Quiet | "תפסיק לשאול על זה" (stop asking about this) · quiet hours in `SSA_QUIET_HOURS` (default 23-7) |
+| 🎓 Studies (`SSA_STUDY=1`) | "מה חסר לי?" (what am I missing?) · "מה אני צריך להגיש?" (what do I need to submit?) · "יצא פתרון לתרגיל 3?" (was the solution to exercise 3 released?) · "על מה אני צריך להתמקד?" (what should I focus on?) · "על מה לשים את הכסף בהסתברות?" (what is worth betting on in probability?) · "בחן אותי" (quiz me) |
 
-**אפשר שיזמין לי מקום / יקבע תור / יבטל הזמנה?** כן, בכתיבה לעסק (כרטיס איש קשר + "תיצור איתם קשר ותזמין…") או בהרשמה באתר עם קישור. הוא מכין את ההודעה או ממלא את הטופס, מראה לך, ושולח רק אחרי ✅ שלך. באתר הוא עוצר לפני תשלום (`agent/booking.py`, ‏`agent/web_agent.py`).
+**Can it book me a place / set an appointment / cancel a booking?** Yes, by writing to the business (a contact card + "תיצור איתם קשר ותזמין..." ("contact them and book...")) or by signing up on a site with a link. It prepares the message or fills in the form, shows you, and sends only after your ✅. On a site it stops before payment (`agent/booking.py`, `agent/web_agent.py`).
 
-**שולח הודעות מעצמו?** רק הודעת בוקר ותזכורות שביקשת. השכבה ש"שמה לב" (`SSA_PROACTIVE=1`) כבויה כברירת מחדל: עד 3 הודעות ביום, לפחות 90 דקות ביניהן, אף פעם לא בשעות השקט.
+**Does it send messages on its own?** Only the morning message and reminders you asked for. The layer that "notices things" (`SSA_PROACTIVE=1`) is off by default: up to 3 messages a day, at least 90 minutes apart, never during quiet hours.
 
-**תזכורת חשובה כשוואטסאפ על השקט?** מה שסימנת כחשוב ולא ענית עליו מקבל עוד הודעה, ואחר כך התראה ביומן גוגל שמצלצלת גם כשוואטסאפ מושתק.
+**An important reminder when WhatsApp is silenced?** What you marked as important and did not answer gets another message, and then a Google Calendar alert that rings even when WhatsApp is muted.
 
-**מה הוא לא עושה:** לא מתקשר בטלפון (רק כותב בוואטסאפ), לא משלם, לא מקליד סיסמאות, אין אפליקציה נפרדת (הוא חי בוואטסאפ), ואין חיבור לאינסטגרם/טלגרם כערוץ שיחה (טלגרם רק להתראות).
+**What it does not do:** it does not phone anyone (it only writes in WhatsApp), does not pay, does not type passwords, has no separate app (it lives in WhatsApp), and has no connection to Instagram/Telegram as a conversation channel (Telegram only for alerts).
 
-## 🧯 טבלת תקלות
+## 🧯 Troubleshooting table
 
-| מה רואים | מה עושים |
+| What you see | What to do |
 |---|---|
-| `no .env — run: python scripts/setup_check.py --init` | להריץ `--init`, ואז למלא את `.env` |
-| `GEMINI_API_KEY — https://aistudio.google.com/apikey` (❌) | אין מפתח ב-`.env`. ליצור ב-AI Studio ולהדביק |
-| `GEMINI_API_KEY does not look like a Google key` | מפתח Gemini מתחיל ב-`AIza`. אולי הודבק מפתח אחר או עם רווח/מרכאות |
-| `WA_BOT_NUMBER == WA_OWNER` | אותו מספר: הבוט לא ישמע אותך. צריך מספר שני לבוט |
-| `TELEGRAM_USER_ID is empty while a bot token is set` | בלי `TELEGRAM_USER_ID` הבוט בטלגרם עונה לכל אחד. למלא, או למחוק את `TELEGRAM_BOT_TOKEN` |
-| `need 3.11+ (3.12 recommended)` | להתקין Python 3.12 וליצור את `venv` מחדש |
-| `<package> — pip install -r requirements.txt` / `ModuleNotFoundError` | הסביבה לא פעילה או חסרה התקנה: `venv/bin/pip install -r requirements.txt` |
-| `ffmpeg not found` | רק לשכבת הלימודים (אודיו וקריאת לוח). להתקין ffmpeg או `FFMPEG_PATH` |
-| `config/courses.yaml missing` | `python scripts/setup_check.py --init --student`, ואז לערוך |
-| `SSA_ACTIVE_COURSES lists keys not in courses.yaml` | המפתחות ב-`SSA_ACTIVE_COURSES` חייבים להיות בדיוק כמו ב-`config/courses.yaml` |
-| `still example ids (Panopto folder / Moodle id)` | `python scripts/find_panopto_folders.py` ו-`course_id` מכתובת המודל |
-| `tracked by git (remove + rotate!)` | קובץ סודי בגיט: `git rm --cached`, ולהחליף את הסוד |
-| `not yet: …` / `WhatsApp bridge session` חסר | עוד לא בוצע צימוד (§וואטסאפ למעלה) |
-| הבוט שותק, אין שגיאה | `cat data/budget_lock.json`: עבר ‎$50 בחודש? ראו "יש תקרה" |
-| `invalid_grant` (Gmail/יומן) | הטוקן בוטל: `python scripts/gmail_reauth.py` או שוב `gcal_auth.py` |
-| הבדיקות נכשלות אחרי שינוי קורסים | `config/courses.example.yaml` צריך את הקורסים המקוריים |
+| `no .env — run: python scripts/setup_check.py --init` | Run `--init`, then fill in `.env` |
+| `GEMINI_API_KEY — https://aistudio.google.com/apikey` (❌) | There is no key in `.env`. Create one in AI Studio and paste it |
+| `GEMINI_API_KEY does not look like a Google key` | A Gemini key starts with `AIza`. Maybe another key was pasted, or one with a space/quotes |
+| `WA_BOT_NUMBER == WA_OWNER` | The same number: the bot will not hear you. You need a second number for the bot |
+| `TELEGRAM_USER_ID is empty while a bot token is set` | Without `TELEGRAM_USER_ID` the Telegram bot answers anyone. Fill it in, or delete `TELEGRAM_BOT_TOKEN` |
+| `need 3.11+ (3.12 recommended)` | Install Python 3.12 and recreate the `venv` |
+| `<package> — pip install -r requirements.txt` / `ModuleNotFoundError` | The environment is not active or an install is missing: `venv/bin/pip install -r requirements.txt` |
+| `ffmpeg not found` | Only for the study layer (audio and board reading). Install ffmpeg or set `FFMPEG_PATH` |
+| `config/courses.yaml missing` | `python scripts/setup_check.py --init --student`, then edit |
+| `SSA_ACTIVE_COURSES lists keys not in courses.yaml` | The keys in `SSA_ACTIVE_COURSES` must be exactly as in `config/courses.yaml` |
+| `still example ids (Panopto folder / Moodle id)` | `python scripts/find_panopto_folders.py` and the `course_id` from the Moodle address |
+| `tracked by git (remove + rotate!)` | A secret file is in git: `git rm --cached`, and replace the secret |
+| `not yet: ...` / `WhatsApp bridge session` missing | Pairing has not been done yet (see the WhatsApp section above) |
+| The bot is silent, no error | `cat data/budget_lock.json`: did it pass $50 for the month? See "Is there a cap?" |
+| `invalid_grant` (Gmail/Calendar) | The token was revoked: `python scripts/gmail_reauth.py` or `gcal_auth.py` again |
+| Tests fail after changing courses | `config/courses.example.yaml` needs the original courses |
 
-## 📖 מילון משתנים (.env)
+## 📖 Variable glossary (.env)
 
-| משתנה | מה |
+| Variable | What |
 |---|---|
-| `GEMINI_API_KEY` | **חובה.** מפתח Gemini, ה-LLM היחיד. `GOOGLE_API_KEY` = גיבוי, גם הוא Gemini |
-| `WA_TRANSPORT` | `bridge` = מכשיר מקושר (ברירת המחדל) |
-| `WA_OWNER` | **חובה.** המספר שלך, ‎`9725XXXXXXXX`. היחיד שהבוט מציית לו |
-| `WA_BOT_NUMBER` | **חובה.** המספר של הבוט (סים/eSIM נוסף) |
-| `WA_OWNER_CHAT` | רק אם הגשר מדווח מזהה צ'אט אחר (`…@lid`) |
-| `WA_OWNER_NAME` / `WA_PARTNER_NAME` | איך הבוט קורא לך / לבן או בת הזוג |
-| `WA_ALLOWED` | מספרים נוספים שמותר להם לדבר עם הבוט (בן/בת זוג), מופרדים בפסיק |
-| `SSA_GROUPS` | `1` = הבוט בקבוצות, רק כשאתה מתייג אותו |
-| `SSA_PROACTIVE` | `1` = השכבה ש"שמה לב" (עד 3 ביום) |
-| `SSA_QUIET_HOURS` | שעות שקט, ברירת מחדל `23-7` |
-| `SSA_BRAIN` | `1` = המוח (מומלץ). בלי זה עונה הנתב הישן |
-| `SSA_BRAIN_MODEL` / `SSA_BRAIN_DAY_CAP` / `SSA_BRAIN_MAX_COST` | מודל השיחות / תקרה יומית (‎$1) / תקרה להודעה (‎$0.10) |
-| `SSA_MONTH_CAP_USD` / `SSA_SITE_API_CAP` | התקרה החודשית (‎$50, או לפי חודש ב-`config/budget_caps.json`) / בניית האתר בלילה (‎$0.10) |
-| `SSA_SUBSCRIPTION` | `1` = מנוי Gemini אישי לחלק מהעבודה. **כבוי כברירת מחדל**, לקרוא קודם את `COSTS.md` |
-| `NTFY_TOPIC` | התראה מחוץ לוואטסאפ כשהקישור לגשר נופל (רשות, בנוסף למייל) |
-| `SSA_NOTIFY_CHANNEL` | לאן התראות: `whatsapp` או `telegram` |
-| `TELEGRAM_BOT_TOKEN` + `TELEGRAM_USER_ID` | ערוץ התראות שני. בלי ה-ID הבוט עונה לכולם |
-| `DASHBOARD_PASSWORD` | חובה אם מריצים את הדשבורד |
-| `SSA_STUDY` | `0` = רק העוזר, `1` = שכבת הלימודים |
-| `TAU_USERNAME` / `TAU_ID` / `TAU_PASSWORD` | ההתחברות לאוניברסיטה (רק ב-`SSA_STUDY=1`) |
-| `SSA_ACTIVE_COURSES` | המפתחות של קורסי הסמסטר מתוך `config/courses.yaml` |
-| `OPENAI_API_KEY` | רק תמלול: הודעות קוליות, והרצאות בלי כתוביות כשהתמלול המקומי לא זמין |
-| `SSA_LOCAL_ASR` / `SSA_ASR_PYTHON` / `SSA_ASR_MODEL` | תמלול הרצאות מקומי בשרת (‎$0) / ה-venv שלו / תיקיית המודל |
-| `SMART_STUDY_DISABLE` / `SMART_STUDY_DISABLE_WHISPER` | לכבות את צינור הלימודים / אף פעם לא לשלם על תמלול |
-| `GMAIL_CREDENTIALS_JSON` / `RECIPIENT_EMAIL` | סיכומים במייל |
-| `SSA_AUTHORIZED_KEYS` | טביעות האצבע של מפתחות ה-SSH המותרים בשרת (לבדיקת האבטחה) |
-| `BACKUP_GPG_RECIPIENT` | גיבוי סודות מוצפן ל-Drive |
-| `SSA_STARTER_REPO` | ‏`owner/repo` ציבורי שהבוט עוזר לחברים להקים (רשות, כבוי כשריק) |
-
-</div>
-
----
-
-## English
-
-Always start with `python scripts/setup_check.py`: it knows your path (`SSA_STUDY`), checks only what that path needs, and never prints a secret.
-
-**Where do I start?** `python -m venv venv`, `venv/bin/pip install -r requirements.txt`, `python scripts/setup_check.py --init`, then `SETUP.md` in order, re-running `setup_check` after each step. Or open the folder in Claude Code and say "help me set this up" (it follows `CLAUDE.md` and never touches your keys).
-
-**Server or my PC?** A server is recommended: Oracle Cloud Always Free (Ubuntu 22.04 ARM), $0, online 24/7. A PC (Windows/Mac/Linux) is fine to try it out, but the bot only answers while the PC is on. On Windows use `venv\Scripts\...`; the `deploy/systemd/` services are Linux only.
-
-**Do I need a second SIM?** Yes. The bot is a linked device of one WhatsApp account (`WA_BOT_NUMBER`) and you talk to it from yours (`WA_OWNER`). The bridge ignores messages sent from its own account, so on the same number it would never hear you. A cheap second SIM or eSIM also keeps a possible ban away from your main number.
-
-**Pairing:** `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER` in `.env`; `venv_wa/bin/pip install neonize`; run `whatsapp/bridge.py`; the code appears in `data/wa_bridge/pair_code.txt`; on the bot's phone: Linked devices → Link a device → "Link with phone number".
-
-**Keys and costs:** the Gemini key comes from https://aistudio.google.com/apikey (billing on plus a budget alert) and lives only in `.env`. Assistant only is about $3–10 a month, with the study layer about $15–30 (see [COSTS.md](COSTS.md)). A mind message is $0.005–0.015; fast-path answers, reminders, buttons and undo are $0; the Oracle server is $0; a lecture summary is about $0.08 with captions or local transcription, or $0.40–0.50 with the paid transcriber. The personal-subscription route (`SSA_SUBSCRIPTION=1`) is off by default. A hard $50/month lock (or one per month in `config/budget_caps.json`) stops every paid call and switches the bot to emergency mode, which answers from your data. There is also a daily cap on conversations (`SSA_BRAIN_DAY_CAP`). OpenAI is only for transcription (voice notes, and lectures without captions).
-
-**Google Calendar:** enable the Calendar API, set the OAuth consent screen to External and then **In production** (in Testing the token dies after 7 days), create a **Desktop app** client, then run `python scripts/gcal_auth.py <client.json>` → `config/gcal_token.json`. For a server, sign in on your PC and `scp` the token.
-
-**Safety:** only `WA_OWNER` is obeyed. Nothing goes to another person, your calendar or a website without your ✅ button. Text from mail, the web or other people is data, never a command. It never types passwords or card details and never clicks pay. Your keys stay in your own `.env` on your own server.
-
-**Add your own layer:** a flag in `config/features.py`, a module in `agent/`, its tools in `TOOLS` of `agent/mind.py` (filtered by `active_tools()`), and its ticks in `tick_list()` of `whatsapp/worker.py`. Copy the study layer.
-
-**What's new and where:** every feature with its switch and cost is in [FEATURES.md](FEATURES.md); how a message travels (fast path → mind → tools → fact check → outbox) and the safety gates are in [ARCHITECTURE.md](ARCHITECTURE.md).
-
-**Update:** `git pull`, `pip install -r requirements.txt`, run the tests, then `sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge`.
-
-**What it doesn't do:** phone calls (it writes in WhatsApp), payments, typing passwords, a separate app, Instagram.
-
-| You see | Do |
-|---|---|
-| `no .env` | `python scripts/setup_check.py --init` |
-| `GEMINI_API_KEY does not look like a Google key` | a Gemini key starts with `AIza`; check for spaces or quotes |
-| `WA_BOT_NUMBER == WA_OWNER` | same number: the bot can't hear you; use a second number |
-| `TELEGRAM_USER_ID is empty while a bot token is set` | set it, or the Telegram bot answers anyone |
-| `need 3.11+` | install Python 3.12 and recreate `venv` |
-| `ModuleNotFoundError` | `venv/bin/pip install -r requirements.txt` in the active venv |
-| `ffmpeg not found` | study layer only: install ffmpeg or set `FFMPEG_PATH` |
-| `SSA_ACTIVE_COURSES lists keys not in courses.yaml` | the keys must match `config/courses.yaml` exactly |
-| silent bot, no error | `cat data/budget_lock.json`: the $50 lock |
-| `invalid_grant` | re-run `scripts/gmail_reauth.py` / `scripts/gcal_auth.py` |
+| `GEMINI_API_KEY` | **Required.** The Gemini key, the only LLM. `GOOGLE_API_KEY` = a fallback, also Gemini |
+| `WA_TRANSPORT` | `bridge` = a linked device (the default) |
+| `WA_OWNER` | **Required.** Your number, `9725XXXXXXXX`. The only one the bot obeys |
+| `WA_BOT_NUMBER` | **Required.** The bot's number (an extra SIM/eSIM) |
+| `WA_OWNER_CHAT` | Only if the bridge reports a different chat id (`...@lid`) |
+| `WA_OWNER_NAME` / `WA_PARTNER_NAME` | What the bot calls you / your partner |
+| `WA_ALLOWED` | Extra numbers allowed to talk to the bot (a partner), comma-separated |
+| `SSA_GROUPS` | `1` = the bot in groups, only when you tag it |
+| `SSA_PROACTIVE` | `1` = the layer that "notices things" (up to 3 a day) |
+| `SSA_QUIET_HOURS` | Quiet hours, default `23-7` |
+| `SSA_BRAIN` | `1` = the mind (recommended). Without it the old router answers |
+| `SSA_BRAIN_MODEL` / `SSA_BRAIN_DAY_CAP` / `SSA_BRAIN_MAX_COST` | The conversation model / the daily cap ($1) / the per-message cap ($0.10) |
+| `SSA_MONTH_CAP_USD` / `SSA_SITE_API_CAP` | The monthly cap ($50, or per month in `config/budget_caps.json`) / the nightly site build ($0.10) |
+| `SSA_SUBSCRIPTION` | `1` = a personal Gemini subscription for part of the work. **Off by default**, read `COSTS.md` first |
+| `NTFY_TOPIC` | An alert outside WhatsApp when the link to the bridge drops (optional, in addition to email) |
+| `SSA_NOTIFY_CHANNEL` | Where alerts go: `whatsapp` or `telegram` |
+| `TELEGRAM_BOT_TOKEN` + `TELEGRAM_USER_ID` | A second alert channel. Without the ID the bot answers everyone |
+| `DASHBOARD_PASSWORD` | Required if you run the dashboard |
+| `SSA_STUDY` | `0` = the assistant only, `1` = the study layer |
+| `TAU_USERNAME` / `TAU_ID` / `TAU_PASSWORD` | The university login (only with `SSA_STUDY=1`) |
+| `SSA_ACTIVE_COURSES` | The keys of the semester's courses from `config/courses.yaml` |
+| `OPENAI_API_KEY` | Transcription only: voice messages, and lectures without captions when local transcription is not available |
+| `SSA_LOCAL_ASR` / `SSA_ASR_PYTHON` / `SSA_ASR_MODEL` | Local lecture transcription on the server ($0) / its venv / the model folder |
+| `SMART_STUDY_DISABLE` / `SMART_STUDY_DISABLE_WHISPER` | Turn off the study pipeline / never pay for transcription |
+| `GMAIL_CREDENTIALS_JSON` / `RECIPIENT_EMAIL` | Summaries by email |
+| `SSA_AUTHORIZED_KEYS` | The fingerprints of the SSH keys allowed on the server (for the security check) |
+| `BACKUP_GPG_RECIPIENT` | An encrypted secrets backup to Drive |
+| `SSA_STARTER_REPO` | A public `owner/repo` that the bot helps friends set up (optional, off when empty) |

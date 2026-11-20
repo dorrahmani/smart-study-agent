@@ -1,7 +1,7 @@
 """
-quiz_generator.py — יוצר חידון PDF נפרד ושולח כמייל נפרד מהסיכום.
+quiz_generator.py — creates a separate quiz PDF and sends it as an email separate from the summary.
 
-שימוש:
+Usage:
     gen = QuizGenerator()
     pdf_path = gen.generate(summary_md_path, course_name, course_key)
     gen.send(pdf_path, course_name, recipients)
@@ -68,13 +68,13 @@ QUIZ_PROMPT = """מהסיכום הבא, צור {n} שאלות אמריקאיות
 
 
 def _call_claude(summary_text: str, n_questions: int = 6) -> dict:
-    """קורא ל-Gemini API וממיר תשובה ל-dict (שם הפונקציה נשמר לתאימות)."""
+    """Calls the Gemini API and converts the response to a dict (the function name is kept for compatibility)."""
     from google import genai
     from google.genai import types as _gt
     key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
     client = genai.Client(api_key=key)
 
-    # חתוך סיכום ארוך מדי
+    # truncate a summary that is too long
     if len(summary_text) > 18_000:
         summary_text = summary_text[:18_000] + '\n...[נחתך]'
 
@@ -95,7 +95,7 @@ def _call_claude(summary_text: str, n_questions: int = 6) -> dict:
         pass
     raw = (resp.text or '').strip()
 
-    # נקה JSON מעטיפות markdown אם יש
+    # strip markdown wrappers from the JSON if present
     raw = re.sub(r'^```json\s*', '', raw)
     raw = re.sub(r'^```\s*', '', raw)
     raw = re.sub(r'\s*```$', '', raw)
@@ -297,7 +297,7 @@ def _build_quiz_html(quiz_data: dict, course_name: str, date_str: str, include_a
             f'</div>'
         )
 
-    # תשובות + הסברים — בקובץ נפרד או בתחתית
+    # answers + explanations — in a separate file or at the bottom
     if include_answers:
         answer_rows = ''
         explanations = ''
@@ -345,7 +345,7 @@ def _build_quiz_html(quiz_data: dict, course_name: str, date_str: str, include_a
 
 
 def _html_to_pdf(html: str, out_path: Path) -> bool:
-    """ממיר HTML ל-PDF באמצעות Playwright (אותו מנגנון כמו pdf_generator.py)."""
+    """Converts HTML to PDF using Playwright (same mechanism as pdf_generator.py)."""
     import tempfile
     try:
         from playwright.sync_api import sync_playwright
@@ -395,15 +395,15 @@ class QuizGenerator:
         n_questions: int = 6,
     ) -> dict:
         """
-        יוצר חידון מסיכום MD.
-        מחזיר:
+        Creates a quiz from an MD summary.
+        Returns:
           {
-            questions_pdf: Path,   ← רק שאלות (ללא תשובות) — זה מה שנשלח
-            answers_pdf:   Path,   ← שאלות + תשובות + הסברים (נשמר מקומית)
-            quiz_json:     Path,   ← JSON גולמי
-            data:          dict,   ← dict החידון
+            questions_pdf: Path,   ← questions only (no answers) — this is what gets sent
+            answers_pdf:   Path,   ← questions + answers + explanations (kept locally)
+            quiz_json:     Path,   ← raw JSON
+            data:          dict,   ← the quiz dict
           }
-        """
+"""
         md_path = Path(summary_md_path)
         summary_text = md_path.read_text(encoding='utf-8', errors='replace')
 
@@ -416,20 +416,20 @@ class QuizGenerator:
         print(f"\n✏️  מייצר חידון עבור: {stem}")
         quiz_data = _call_claude(summary_text, n_questions)
 
-        # שמור JSON
+        # save the JSON
         json_path = out_dir / f"{stem}_quiz.json"
         json_path.write_text(
             json.dumps(quiz_data, ensure_ascii=False, indent=2),
             encoding='utf-8'
         )
 
-        # PDF שאלות בלבד (מה שנשלח)
+        # questions-only PDF (what gets sent)
         q_html = _build_quiz_html(quiz_data, course_name, date_str, include_answers=False)
         q_pdf  = out_dir / f"{stem}_quiz_questions.pdf"
         _html_to_pdf(q_html, q_pdf)
         print(f"  📄 שאלות PDF: {q_pdf.name}")
 
-        # PDF שאלות + תשובות (נשמר מקומית)
+        # questions + answers PDF (kept locally)
         a_html = _build_quiz_html(quiz_data, course_name, date_str, include_answers=True)
         a_pdf  = out_dir / f"{stem}_quiz_answers.pdf"
         _html_to_pdf(a_html, a_pdf)
@@ -449,7 +449,7 @@ class QuizGenerator:
         course_name: str,
         recipients: list[str],
     ) -> bool:
-        """שולח את קובץ השאלות בלבד כמייל נפרד לכל נמען."""
+        """Sends the questions-only file as a separate email to each recipient."""
         import os as _os
         sys.path.insert(0, str(ROOT))
         from generators.gmail_sender import GmailSender

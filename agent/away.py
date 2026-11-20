@@ -4,7 +4,7 @@ agent/away.py — thinking ahead like a personal assistant: when the owner is aw
 The owner 20/11: "תחשוב מראש בתור עוזר אישי". Only facts from his own data — nothing guessed:
 
     periods   his calendar (primary): an all-day event that says he's away or busy ("ים המלח עבודה", "קורס עבודה",
-              מילואים, חופשה, טיסה…) · a hotel check-in → check-out pair · a hotel / flight booking he sent
+              "מילואים" (reserve duty), "חופשה" (vacation), "טיסה" (flight)…) · a hotel check-in → check-out pair · a hotel / flight booking he sent
               (agent/my_files: "הגעה 26/11/26, עזיבה 28/11/26") · what he said ("אני בים המלח מ-26 עד 29", kept in
               data/away.json; it wins over the rest for that place) · a saved fact with explicit dates.
               Pieces of one trip (same place, ≤1 day apart) are one period.

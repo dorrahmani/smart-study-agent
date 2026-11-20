@@ -1,101 +1,107 @@
-<div dir="rtl">
+# 📲 Your personal assistant, in WhatsApp
 
-# 📲 העוזר האישי שלך, בוואטסאפ
+*A personal assistant in WhatsApp: calendar, reminders that chase you, tasks and studies. It runs on your own server, and nothing goes out without your ✅.*
 
-> **העוזר האישי שלך בוואטסאפ — יומן, תזכורות שרודפות אחריך, משימות ולימודים. רץ על השרת שלך, ושום דבר לא יוצא בלי ✅ שלך.**
+*העוזר האישי שלך בוואטסאפ — יומן, תזכורות שרודפות אחריך, משימות ולימודים. רץ על השרת שלך, ושום דבר לא יוצא בלי ✅ שלך.*
 
-**מזכיר אישי שחי בוואטסאפ, על המספר שלך ועל השרת שלך.** הוא מנהל איתך את היומן, התזכורות והמשימות, כותב לאנשים ומזמין בשבילך, וזוכר מה חשוב לך. שום דבר לא יוצא בלי ✅ שלך.
+עברית: [README.he.md](README.he.md)
 
-הוא בנוי בשכבות, כדי לגדול איתך: ליבה של מזכיר, ועליה "תחומי חיים". השכבה הראשונה, והמפותחת ביותר, היא **Smart Study** ללימודים באוניברסיטה.
+**A personal secretary that lives in WhatsApp, on your own number and your own server.** It manages your calendar, reminders and tasks with you, writes to people and books things for you, and remembers what matters to you. Nothing goes out without your ✅.
 
-</div>
+It is built in layers so it can grow with you: a secretary core, and "life domains" on top of it. The first and most developed layer is **Smart Study**, for university studies.
 
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB) ![LLM: Gemini only](https://img.shields.io/badge/LLM-Gemini%20only-4285F4) ![Self-hosted](https://img.shields.io/badge/self--hosted-your%20server-2ea44f) ![Every outward action behind ✅](https://img.shields.io/badge/outward%20actions-behind%20%E2%9C%85-orange)
 
-> **English below** · [SETUP.md](SETUP.md) · [Features](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [Costs](docs/COSTS.md) · [FAQ](docs/FAQ.md) · [SECURITY.md](SECURITY.md) · [CLAUDE.md](CLAUDE.md) — open this folder in Claude Code and say "help me set this up": it follows CLAUDE.md and walks you through, without ever touching your keys
+> [SETUP.md](SETUP.md) · [Features](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [Costs](docs/COSTS.md) · [FAQ](docs/FAQ.md) · [SECURITY.md](SECURITY.md) · [CLAUDE.md](CLAUDE.md) — open this folder in Claude Code and say "help me set this up": it follows CLAUDE.md and walks you through, without ever touching your keys
 
-<div dir="rtl">
+## A day with it
 
-## יום אחד איתו
-
-דוגמה מומצאת, אבל ככה זה נראה:
-
-</div>
+An invented example, but this is what it looks like. The assistant talks Hebrew; the chat is shown as it appears, with English glosses in parentheses.
 
 ```text
 07:45  🤖  ☀️ בוקר טוב! היום: 10:00 רופא שיניים, 18:30 אימון.
            📌 פתוח: להחזיר ספרים לספרייה (עד מחר).
            📝 מטלה 4 בהסתברות, הגשה ביום חמישי. עוד לא הוגשה.
+           (Good morning! Today: 10:00 dentist, 18:30 workout. Open: return library
+            books by tomorrow. Probability assignment 4 is due Thursday, not submitted.)
 
-09:12  אני  תוסיף ליומן חמישי ב-20 ארוחה אצל ההורים, ותזכיר לי ביום רביעי לקנות פרחים
+09:12  me  תוסיף ליומן חמישי ב-20 ארוחה אצל ההורים, ותזכיר לי ביום רביעי לקנות פרחים
+           (Add to the calendar Thursday at 20:00 dinner at my parents', and remind me
+            on Wednesday to buy flowers)
 09:12  🤖  📅 חמישי 20:00–22:00 · ארוחה אצל ההורים
            ⏰ רביעי 18:00 · לקנות פרחים
-           [✅ להוסיף]  [✏️ לשנות]
+           [✅ Add]  [✏️ Change]
 
-11:30  אני  [כרטיס איש קשר: מלון לדוגמה]  תיצור איתם קשר ותבטל את ההזמנה מחר
+11:30  me  [contact card: Example Hotel]  תיצור איתם קשר ותבטל את ההזמנה מחר
+           (Contact them and cancel the booking for tomorrow)
 11:30  🤖  מה מספר ההזמנה? בלי זה לא אוכל לבטל.
-11:31  אני  AB-77
+           (What is the booking number? I can't cancel without it.)
+11:31  me  AB-77
 11:31  🤖  זה מה שיישלח למלון לדוגמה:
            "שלום, כאן העוזר האישי של ישראל. נבקש לבטל את הזמנה AB-77 לתאריך מחר. תודה!"
-           [✅ לשלוח]  [✏️ לערוך]  [❌ לא]
+           (This is what will be sent to Example Hotel: "Hello, this is Israel's personal
+            assistant. Please cancel booking AB-77 for tomorrow's date. Thanks!")
+           [✅ Send]  [✏️ Edit]  [❌ No]
 
 14:05  🤖  🔔 תזכורת (🚨 חשוב): להתקשר לביטוח עד 15:00
-14:20  🤖  🔔 שוב, כי סימנת שזה חשוב.  [✅ ראיתי]  [⏰ עוד שעה]
+           (Reminder (important): call the insurance company by 15:00)
+14:20  🤖  🔔 שוב, כי סימנת שזה חשוב.  [✅ Seen]  [⏰ In an hour]
+           (Again, because you marked it as important.)
 
 16:40  🤖  📬 מהאוניברסיטה: התרגול שלך ביום שלישי עובר לחדר 305.
            (2 הודעות על קבוצות אחרות סיננתי.)
+           (From the university: your Tuesday tutorial moves to room 305.
+            I filtered out 2 messages about other groups.)
 
-21:10  אני  מה מחכה לי?
+21:10  me  מה מחכה לי?   (What is waiting for me?)
 21:10  🤖  ⏳ 1. מטלה 4 בהסתברות (חמישי)  2. להחזיר ספרים (מחר)
            3. המלון ענה? עוד אין תשובה, אבדוק שוב מחר ב-09:00.
+           (1. Probability assignment 4 (Thursday) 2. Return books (tomorrow)
+            3. Did the hotel answer? Not yet, I will check again tomorrow at 09:00.)
 ```
 
-<div dir="rtl">
+## What it does for you: three layers
 
-## מה הוא עושה בשבילך: שלוש שכבות
-
-### 1. הליבה: המזכיר (תמיד דולק)
+### 1. The core: the secretary (always on)
 
 | | |
 |---|---|
-| 📅 **יומן גוגל** | "תוסיף ליומן…", "תזיז את הפגישה למחר", כמה אירועים בהודעה אחת. התנגשות ביומן מוצגת לפני שאתה מאשר |
-| ⚡ **תשובות מיידיות, בלי מודל** | "מה הלוז שלי מחר?", "מה מחכה לי?", "מתי ההגשה הבאה?" נענות מהנתונים בפחות משנייה, ב-‎$0 |
-| ⏰ **תזכורות שלא מוותרות** | "תזכיר לי מחר בבוקר…" מובן בקוד (שעון ישראל). מה שסימנת כחשוב ולא ענית: עוד הודעה, ואז התראה ביומן |
-| ⏳ **משימות, אישורים, ביטול** | כל מה שפתוח במקום אחד. "ביטלתי את המלון" סוגר את הפריט. ✅ שלא נלחץ מוזכר פעם אחת. "תבטל את מה שעשית" מחזיר את הפעולה האחרונה של הבוט |
-| 🤝 **הודעות, תיאומים והזמנות** | "שלח לאמא ש…", כרטיס איש קשר ואז "תיצור איתם קשר", הרשמה באתר בדפדפן אמיתי עד לפני התשלום. הכול אחרי ✅ |
-| 📎 **שומר את הקבצים שלך** | PDF, צילום או קישור נשמרים עם סיכום ומזהים, כך ש"מה מספר ההזמנה של המלון?" עובד גם אחרי שבועות |
-| 🧳 **חושב קדימה** | נסיעה או תקופה עמוסה ביומן או בהזמנה, ומגיעה תוכנית אחת: מה לסיים ועד מתי, ומה תפספס |
-| 🌐 **שאלות מהרשת, בזול** | מזג אוויר, שערים, זמני שבת, חדשות ושעות פתיחה בקוד פייתון, ב-‎$0. שאלה כללית: חיפוש וקריאה, וקריאה קטנה אחת למודל עם מקורות |
-| 🔕 **שקט כשצריך** | שאלה פתוחה אחת בכל פעם, שעות שקט, תקרה יומית. "תפסיק לשלוח לי X" משתיק. כשלא היית זמין, הכול מחכה ל"מה פספסתי" אחד. הוא לומד מתי אתה עונה |
-| 🛟 **לא נופל** | Gemini למטה או התקציב נגמר: מצב חירום עונה מהנתונים. בדיקת עקביות לילית, התראה מחוץ לוואטסאפ כשהקישור נופל, בדיקת שחזור גיבוי שבועית ודף בריאות |
-| 🛠️ **משתפר מעצמו** | 👍/👎 על תשובות וסיכום שבועי. משימה שחוזרת הופכת לכלי פייתון. כל תיקון עובר את כל הבדיקות ומחכה ל-✅ |
+| 📅 **Google Calendar** | "Add to the calendar...", "move the meeting to tomorrow", several events in one message. A calendar clash is shown before you approve |
+| ⚡ **Instant answers, no model** | "What is my schedule tomorrow?", "what is waiting for me?", "when is the next deadline?" are answered from the data in under a second, for $0 |
+| ⏰ **Reminders that do not give up** | "Remind me tomorrow morning..." is understood in code (Israel time). What you marked important and did not answer gets another message, then a calendar alert |
+| ⏳ **Tasks, approvals, undo** | Everything that is open in one place. "I cancelled the hotel" closes the item. A ✅ you did not press is mentioned once. "Undo what you did" reverses the bot's last action |
+| 🤝 **Messages, coordination and bookings** | "Tell mom that...", a contact card and then "contact them", signing up on a site in a real browser up to just before payment. All after ✅ |
+| 📎 **Keeps your files** | A PDF, photo or link is saved with a summary and identifiers, so "what is the hotel booking number?" works weeks later |
+| 🧳 **Thinks ahead** | A trip or a busy period in your calendar or a booking, and you get one plan: what to finish and by when, and what you will miss |
+| 🌐 **Web questions, cheaply** | Weather, exchange rates, Shabbat times, news and opening hours in Python code, for $0. A general question: search and read, and one small model call with sources |
+| 🔕 **Quiet when needed** | One open question at a time, quiet hours, a daily cap. "Stop sending me X" mutes it. When you were unavailable, everything waits for a single "what did I miss". It learns when you answer |
+| 🛟 **Does not fall over** | Gemini is down or the budget is spent: emergency mode answers from the data. A nightly consistency check, an alert outside WhatsApp when the link drops, a weekly backup-restore test and a health page |
+| 🛠️ **Improves itself** | 👍/👎 on answers and a weekly summary. A recurring task becomes a Python tool. Every fix passes all the tests and waits for your ✅ |
 
-### 2. לימודים: Smart Study (`SSA_STUDY=1`)
+### 2. Study: Smart Study (`SSA_STUDY=1`)
 
-נבנתה ונבדקה לאורך סמסטר אמיתי באוניברסיטת תל אביב, שנשארת הדוגמה. אוניברסיטה אחרת מוגדרת בקבצי `config/`.
+Built and tested over a real semester at Tel Aviv University, which remains the example. Another university is configured in the `config/` files.
 
 | | |
 |---|---|
-| ✅ **כל החובות** | כל מטלה ובוחן ממודל לפי קורס: פתוח, הוגש, מבחנים. מטלה שהוזכרה במייל או בהודעה במודל נכנסת למעקב תוך 15 דקות |
-| 🪜 **סולם דדליינים** | 7 ימים, 3, יום לפני, בבוקר, 6 שעות ושעתיים לפני, עד שמגישים. אם תרצה, כל דדליין גם ביומן שלך, מתעדכן לבד |
-| 📊 **ציונים ומשוב** | ציון והערות הבודק בהודעה אחת. פרופיל חולשות רק כשמבקשים: "על מה אני צריך להתמקד?" |
-| 🎯 **סטטיסטיקת מבחנים** | אחוז השאלות לכל נושא ומה חוזר כל שנה, מתוך מבחנים קודמים, בלי מודל |
-| 🎥 **סיכומי שיעורים** | ההקלטות של הקבוצה שלך: כתוביות קודם, אחר כך תמלול מקומי בשרת (‎$0), ושירות בתשלום רק בסוף. סיכום בעברית כולל קריאת הלוח, PDF למייל ולוואטסאפ |
-| 📓 **NotebookLM קודם** | שאלה על החומר הולכת קודם למחברת של הקורס, שמקבלת לבד את התמלולים והסיכומים |
-| 📬 **רק הקבוצה שלך** | מייל ומודל מסוננים לפי היום, השעה והמתרגל שלך. שינויי חדר ושעה נכנסים לכל תשובה על המערכת |
-| 🚶 **הליכות בקמפוס** | שני שיעורים צמודים בבניינים רחוקים מקבלים הודעה אחת ביום |
+| ✅ **All obligations** | Every assignment and quiz from Moodle, per course: open, submitted, exams. An assignment mentioned in an email or a Moodle message is tracked within 15 minutes |
+| 🪜 **Deadline ladder** | 7 days, 3, a day before, in the morning, 6 hours and 2 hours before, until you submit. If you want, every deadline is also in your calendar, updated automatically |
+| 📊 **Grades and feedback** | The grade and the grader's comments in one message. A weakness profile only on request: "what should I focus on?" |
+| 🎯 **Exam statistics** | The percentage of questions per topic and what recurs every year, from past exams, without a model |
+| 🎥 **Lecture summaries** | The recordings of your group: captions first, then local transcription on the server ($0), and a paid service only as a last resort. A Hebrew summary including board reading, as a PDF by email and WhatsApp |
+| 📓 **NotebookLM first** | A question about the material goes first to the course notebook, which automatically receives the transcripts and summaries |
+| 📬 **Only your group** | Email and Moodle are filtered by your day, hour and teaching assistant. Room and time changes are included in every answer about the schedule |
+| 🚶 **Campus walks** | Two back-to-back classes in distant buildings get one message a day |
 
-### 3. מוח שני: Obsidian (רשות)
+### 3. Second brain: Obsidian (optional)
 
-העוזר כותב אזור משלו בכספת: אנשים, מסמכים, מה פתוח, השבוע, יומן יומי ומפות לכל קורס ותחום. החיפוש (BM25 בעברית) עובר על הפתקים שכתבת בעצמך. הפתקים שלך לא נדרסים ולא נמחקים, `rclone copy` בלבד, וטלפונים, מיילים ומזהים מנוקים מכל פתק.
+The assistant writes its own area in the vault: people, documents, what is open, this week, a daily journal and maps for each course and domain. The search (BM25 in Hebrew) runs over the notes you wrote yourself. Your notes are never overwritten or deleted (`rclone copy` only), and phone numbers, emails and identifiers are scrubbed from every note.
 
-כל יכולת, איך מדליקים אותה וכמה היא עולה: [docs/FEATURES.md](docs/FEATURES.md). המסלול של הודעה ושערי הבטיחות: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Every capability, how to turn it on and what it costs: [docs/FEATURES.md](docs/FEATURES.md). A message's route and the safety gates: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## בנוי בשכבות
+## Built in layers
 
-ליבה אחת של מזכיר, ותחומי חיים שנדלקים בדגל. כל תחום מביא איתו את הכלים שהמודל רשאי להשתמש בהם, את הבדיקות התקופתיות שלו ואת ההגדרות שלו. תחום כבוי לא נטען בכלל: המודל לא רואה את הכלים שלו, וה-worker לא מריץ את הבדיקות שלו.
-
-</div>
+One secretary core, and life domains that you switch on with a flag. Each domain brings its own tools that the model may use, its periodic checks and its settings. A domain that is off is not loaded at all: the model does not see its tools, and the worker does not run its checks.
 
 ```mermaid
 flowchart LR
@@ -109,36 +115,32 @@ flowchart LR
     C -.- N["＋ your next layer<br/>config/features.py"]
 ```
 
-<div dir="rtl">
+**Adding a layer of your own:** a flag in `config/features.py`, a module in `agent/`, its tools in `TOOLS` of `agent/mind.py` (they are filtered by `active_tools()`), and its periodic checks in `tick_list()` of `whatsapp/worker.py`. The study layer is built exactly this way, so you can copy from it.
 
-**להוסיף שכבה משלך:** דגל ב-`config/features.py`, מודול ב-`agent/`, הכלים שלו ב-`TOOLS` של `agent/mind.py` (הם מסוננים ב-`active_tools()`), והבדיקות התקופתיות ב-`tick_list()` של `whatsapp/worker.py`. שכבת הלימודים בנויה בדיוק ככה, אז אפשר להעתיק ממנה.
+## What it costs
 
-## כמה זה עולה
+Assistant only: roughly $3-10 a month. With studies: roughly $15-30. The numbers were measured on a real installation. Details and ways to save: [docs/COSTS.md](docs/COSTS.md).
 
-עוזר בלבד: בערך ‎$3–10 בחודש. עם הלימודים: בערך ‎$15–30. המספרים נמדדו בהתקנה אמיתית. פירוט ודרכים לחסוך: [docs/COSTS.md](docs/COSTS.md).
-
-| מה | עלות |
+| What | Cost |
 |---|---|
-| הודעה למוח (Gemini) | ‎$0.005–0.015 (תקרה ‎$0.10 להודעה, ‎$1 ליום) |
-| שאלת לוז במסלול המהיר, תזכורות, כפתורים, ביטול, "מה פספסתי" | ‎$0 |
-| שאלה מהרשת | ‎$0 מובנית · ‎~$0.0005 כללית · ‎~$0.04 רק כגיבוי |
-| שאלה על המערכת עצמה | פחות מ-‎$0.01 (אותה שאלה על אותו commit: ‎$0) |
-| סיכום שיעור: כתוביות או תמלול מקומי / שירות תמלול בתשלום | ‎~$0.08 / ‎~$0.40–0.50 |
-| הכנה לפני שיעור · בניית האתר בלילה | ‎~$0.001 · עד ‎$0.10 |
-| ציונים, סטטיסטיקת מבחנים, כספת, גיבוי, בדיקת עקביות, מצב חירום | ‎$0 |
-| שרת Oracle Cloud Always Free | ‎$0 |
-| מנוי Gemini אישי במקום חלק מה-API | **כבוי כברירת מחדל**, `SSA_SUBSCRIPTION=1`. הסבר ב-COSTS |
+| A message to the mind (Gemini) | $0.005-0.015 (cap of $0.10 per message, $1 per day) |
+| A fast-path schedule question, reminders, buttons, undo, "what did I miss" | $0 |
+| A web question | $0 built-in · ~$0.0005 general · ~$0.04 only as a fallback |
+| A question about the system itself | under $0.01 (the same question on the same commit: $0) |
+| A lecture summary: captions or local transcription / a paid transcription service | ~$0.08 / ~$0.40-0.50 |
+| Pre-class primer · nightly site build | ~$0.001 · up to $0.10 |
+| Grades, exam statistics, vault, backup, consistency check, emergency mode | $0 |
+| Oracle Cloud Always Free server | $0 |
+| A personal Gemini subscription instead of part of the API | **off by default**, `SSA_SUBSCRIPTION=1`. Explained in COSTS |
 
-תקרה חודשית קשיחה (ברירת מחדל ‎$50, אפשר לכל חודש בנפרד ב-`config/budget_caps.json`). מעליה כל קריאה בתשלום נעצרת.
+A hard monthly cap (default $50, configurable per month in `config/budget_caps.json`). Above it every paid call stops.
 
-## הקמה: שני מסלולים
+## Setup: two paths
 
-| | מסלול | מה צריך |
+| | Path | What you need |
 |---|---|---|
-| **א׳** | **רק העוזר** (בערך שעה) | מפתח Gemini, מספר וואטסאפ נוסף לבוט (סים/eSIM, מכשיר מקושר) שאתה כותב לו מהמספר שלך, יומן גוגל |
-| **ב׳** | **+ Smart Study** (רשות, גם אחר כך) | התחברות לאוניברסיטה, `config/courses.yaml`, מודל ופנופטו, מייל, NotebookLM |
-
-</div>
+| **A** | **The assistant only** (about an hour) | A Gemini key, an extra WhatsApp number for the bot (SIM/eSIM, linked device) that you write to from your own number, Google Calendar |
+| **B** | **+ Smart Study** (optional, also later) | University login, `config/courses.yaml`, Moodle and Panopto, email, NotebookLM |
 
 ```bash
 python -m venv venv && venv/bin/pip install -r requirements.txt   # Windows: venv\Scripts\pip
@@ -148,122 +150,40 @@ python scripts/install_git_hooks.py        # every push runs the leak scan first
 PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only
 ```
 
-<div dir="rtl">
+Everything, step by step: [SETUP.md](SETUP.md). FAQ, the troubleshooting table and the variable dictionary: [docs/FAQ.md](docs/FAQ.md).
 
-הכול, צעד אחרי צעד: [SETUP.md](SETUP.md). שאלות נפוצות, טבלת תקלות ומילון משתנים: [docs/FAQ.md](docs/FAQ.md).
+## ⚖️ Use responsibly
 
-## ⚖️ שימוש אחראי
+- The project is for **personal use** and is provided **as is, without any warranty**. Whatever you run, you run at your own risk.
+- **WhatsApp:** the bridge uses an unofficial library (a linked device). This may not comply with WhatsApp's terms of use, and the number may be banned. A separate number is therefore recommended.
+- **University:** use only your own accounts, and check that it is permitted under your institution's rules. The tool is not meant to bypass access, to share course materials with people who have no access to them, or to do anything in your place in exams and assignments where help is not allowed.
+- **The language model** can be wrong. Check before you trust a date, an amount or a submission.
+- **Privacy:** all the data stays with you, on your server. Do not upload `.env`, the login files or `data/` to GitHub.
 
-- הפרויקט **לשימוש אישי** ומסופק **כמות שהוא, בלי שום אחריות**. כל מה שתריץ, אתה מריץ על אחריותך.
-- **וואטסאפ:** הגשר משתמש בספרייה לא רשמית (מכשיר מקושר). זה עלול לא להתאים לתנאי השימוש של וואטסאפ, והמספר עלול להיחסם. לכן מומלץ מספר נפרד.
-- **אוניברסיטה:** השתמש רק בחשבונות שלך, ובדוק שזה מותר לפי הכללים של המוסד שלך. הכלי לא נועד לעקוף גישה, לחלוק חומרי קורס עם מי שאין לו גישה אליהם, או לעשות משהו במקומך בבחינות ובמטלות שאסור לעזור בהן.
-- **מודל השפה** יכול לטעות. בדוק לפני שאתה סומך על תאריך, סכום או הגשה.
-- **פרטיות:** כל המידע נשאר אצלך, על השרת שלך. אל תעלה לגיטהאב את `.env`, את קבצי ההתחברות או את `data/`.
+## Security model
 
-## מודל האבטחה
+- **Nothing goes out without ✅:** a message to another person, a calendar event, a sign-up on a site. Words in the chat do not count as approval, only the button does.
+- **Prompt-injection defense:** text from an email, a site, a document or another person is data, not a command. The model's tools only read. An action counts only if a separate check, which sees only your own messages, confirms that you asked for it. After reading an email, queries cannot be sent out in the same turn.
+- **Only you (and whoever you approved):** every other number is silently rejected. The WhatsApp bridge runs in a separate environment, with no access to the keys.
+- **Signing up on sites:** it never types a password, credit card, ID number or SMS code, and never clicks "pay". It hands the CAPTCHA back to you.
+- **Hard cost cap:** default $50 a month, above which everything stops and a message arrives. There is also a daily cap on conversations.
+- **On the server:** key-only SSH, fail2ban, a nightly security check without an LLM that alerts on every new failure, and a deploy gate that runs about 570 safety tests before every update.
+- **No secrets in the code:** everything is in `.env` and in token files listed in `.gitignore`. Before every push `scripts/release_scan.py` runs (a local hook plus GitHub Actions), and every finding blocks.
 
-- **שום דבר לא יוצא בלי ✅:** הודעה לאדם אחר, אירוע ביומן, הרשמה באתר. מילים בצ'אט לא נחשבות אישור, רק הכפתור.
-- **הגנה מהזרקת הוראות:** טקסט ממייל, מאתר, ממסמך או מאדם אחר הוא מידע, לא פקודה. הכלים של המודל רק קוראים. פעולה נחשבת רק אם בדיקה נפרדת, שרואה רק את ההודעות שלך, מאשרת שביקשת אותה. אחרי קריאת מייל אי אפשר לשלוח שאילתות החוצה באותו תור.
-- **רק אתה (ומי שאישרת):** כל מספר אחר נדחה בשקט. הגשר לוואטסאפ רץ בסביבה נפרדת, בלי גישה למפתחות.
-- **הרשמה באתרים:** אף פעם לא מקליד סיסמה, אשראי, ת"ז או קוד SMS, ולא לוחץ "לתשלום". את ה-CAPTCHA מחזיר אליך.
-- **תקרת עלות קשיחה:** ברירת מחדל ‎$50 בחודש, ומעליה הכול נעצר ומגיעה הודעה. יש גם תקרה יומית לשיחות.
-- **בשרת:** SSH במפתח בלבד, fail2ban, בדיקת אבטחה לילית בלי LLM שמתריעה על כל כשל חדש, ושער פריסה שמריץ כ-570 בדיקות בטיחות לפני כל עדכון.
-- **אין סודות בקוד:** הכול ב-`.env` ובקבצי טוקן שב-`.gitignore`. לפני כל push רץ `scripts/release_scan.py` (hook מקומי + GitHub Actions), וכל ממצא חוסם.
+Details in [SECURITY.md](SECURITY.md).
 
-פירוט ב-[SECURITY.md](SECURITY.md).
+## Layout
 
-## מבנה
-
-| תיקייה | מה |
+| Folder | What |
 |---|---|
-| `agent/` | המוח: הבנת הודעות, יומן, תזכורות, משימות, "מה מחכה לי", תיאומים, זיכרון, לולאת השיפור |
-| `whatsapp/` | הגשר (מכשיר מקושר), התור, ה-worker |
-| `config/features.py` | אילו שכבות דולקות |
-| `integrations/` | יומן גוגל, חיפוש. ללימודים: מייל האוניברסיטה, my.tau, מסנן הרלוונטיות |
-| `collectors/` · `generators/` · `pipelines/` | Smart Study: פנופטו, מודל, סיכומים, NotebookLM, אתר |
-| `deploy/` | systemd, ‏crontab (`crontab.assistant.txt` לעוזר בלבד), שער הפריסה, הקשחה, git hooks |
-| `tests/` | `test_safety_critical.py` (השער), `conversation_evals.py`, `test_assistant_only.py` |
-| `docs/FEATURES.md` · `docs/ARCHITECTURE.md` · `docs/COSTS.md` | כל יכולת ואיך מדליקים · המסלול של הודעה ושערי הבטיחות · עלויות ואיך לחסוך |
-| `vault_sync/` | המוח השני: אזור העוזר בכספת, מפות, חיפוש בפתקים שלך, ניקוי פרטיות |
-| `docs/FAQ.md` | שאלות נפוצות, טבלת תקלות של `setup_check`, מילון משתני `.env`, מה העוזר יודע לעשות |
-| `docs/RUNBOOK.md` | תפעול שרת: תקלות ואיך מתקנים |
-
-</div>
-
----
-
-## English
-
-### Your personal assistant, in WhatsApp
-
-**A self-hosted personal secretary that lives in WhatsApp, on your own number and your own server.** It runs your calendar, reminders and tasks, writes to people and books things for you, and remembers what matters to you. Nothing leaves without your ✅. The only LLM is Gemini.
-
-It is built in **layers** so it can grow with you: one core secretary, plus life domains you switch on. The first and most developed layer is **Smart Study**, for university students.
-
-### What it does for you: three layers
-
-**1. The core secretary (always on)**
-- **Google Calendar** in plain language, several events in one message, clashes shown before you approve.
-- **Instant answers with no model:** "what's my day tomorrow", "what's waiting for me", "when is the next deadline" come straight from your data in under a second, for $0.
-- **Reminders that follow up:** Hebrew times are parsed in code (Israel time). An important one you didn't react to gets a second message, then a calendar alarm.
-- **Tasks, approvals, undo:** open items in one place; "I cancelled the hotel" closes the item; a ✅ you never tapped is reminded once; "undo what you did" reverses the bot's last action.
-- **Messages, coordination, bookings:** drafted for you and sent only after your ✅. Web sign-ups run in a real browser up to payment, and it never types passwords or card details.
-- **Your files are kept** with a summary and their identifiers, so "what's the hotel booking number?" works weeks later.
-- **Thinking ahead:** a trip or a busy period in your own data → one plan: what to finish by when, and what you'll miss.
-- **Cheap web answers:** weather, exchange rates, Shabbat times, news and opening hours in Python for $0. A general question gets a search, a read and one small cited model call.
-- **Quiet when it should be:** one open question at a time, quiet hours, a daily cap, "stop sending me X". While you're away everything waits for one "what did I miss". It learns when you answer.
-- **It doesn't fall over:** emergency mode answers from your data when Gemini is down or the budget is spent. Also a nightly consistency check, a WhatsApp-link alert outside WhatsApp, a weekly backup restore test and a health page.
-- **It improves itself:** 👍/👎 and a weekly summary; a repeated task becomes a Python tool; every fix passes the full test suite and waits for your ✅.
-
-**2. Study: Smart Study (`SSA_STUDY=1`)**, built over a real semester at Tel Aviv University (still the worked example; your own university goes in `config/`)
-- **Every obligation** per course (open, submitted, exams). A deadline named in a mail or a Moodle post is tracked within 15 minutes.
-- **A deadline ladder** (7 days … 2 hours before, until submitted) and, if you allow it, every deadline in your own calendar, kept in step.
-- **Grades and the grader's feedback** in one message, with a weakness profile only when you ask. **Exam statistics** from past exams: the share of questions per topic and what comes back every year.
-- **Lecture summaries:** captions first, then local transcription on the server ($0), the paid transcriber last. A Hebrew summary with whiteboard reading, as a PDF.
-- **NotebookLM first** for course questions, fed with every transcript and summary. University updates **for your groups only**. Campus walking warnings.
-
-**3. Second brain: Obsidian (optional).** The assistant writes its own area of linked notes (people, documents, open items, the week, a journal, maps per course and area). BM25 search runs over the notes you wrote. Your notes are never overwritten or deleted (`rclone copy` only), and phones, e-mails and IDs are scrubbed.
-
-Every feature, how to turn it on and what it costs: [docs/FEATURES.md](docs/FEATURES.md). How a message travels and the safety gates: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-### Built in layers
-
-A layer is a flag in `config/features.py`, a module in `agent/`, its tools in `agent/mind.py` `TOOLS` (filtered by `active_tools()`) and its periodic ticks in `whatsapp/worker.py` `tick_list()`. When a layer is off, the model is not shown its tools and the worker does not run its ticks. Smart Study is built exactly this way, so it is the template for yours.
-
-### What it costs
-
-Assistant only: about **$3–10 a month**. With the study layer: about **$15–30**. The numbers are from a real install; see [docs/COSTS.md](docs/COSTS.md).
-
-| Item | Cost |
-|---|---|
-| A message to the mind (Gemini) | $0.005–0.015 (capped at $0.10 a message, $1 a day) |
-| Fast-path schedule answers, reminders, buttons, undo, catch-up | $0 |
-| A web question | $0 structured · ~$0.0005 general · ~$0.04 fallback only |
-| A question about the system itself | < $0.01 ($0 cached) |
-| A lecture summary: captions or local transcription / paid transcriber | ~$0.08 / ~$0.40–0.50 |
-| Pre-class primer · nightly course-site build | ~$0.001 · ≤ $0.10 |
-| Grades, exam statistics, vault, backups, consistency check, emergency mode | $0 |
-| Server (Oracle Cloud Always Free) | $0 |
-| A personal Gemini subscription for part of the text work | **off by default** (`SSA_SUBSCRIPTION=1`; read COSTS first) |
-
-A hard monthly cap (default $50, or one per month in `config/budget_caps.json`) stops every paid call above it.
-
-### Setup
-
-Two paths in [SETUP.md](SETUP.md) (Hebrew). **Path 1, assistant only**, needs a Gemini key, a second WhatsApp number for the bot (a linked device; you write to it from yours) and Google Calendar. Questions and errors: [docs/FAQ.md](docs/FAQ.md). **Path 2** adds Smart Study. `python scripts/setup_check.py` tells you what is missing, and `python -m tests.test_assistant_only` checks the minimal install.
-
-### ⚖️ Use responsibly
-
-- Personal use, provided **as is, without warranty**; you run it at your own risk.
-- **WhatsApp:** the bridge uses an unofficial library (a linked device). That may conflict with WhatsApp's terms and the number can be banned. Use a separate number.
-- **University:** use your own accounts only and check your institution's rules. It is not meant to bypass access, to share course material with people who do not have access, or to do work for you where outside help is not allowed.
-- The language model can be wrong: verify dates, amounts and submissions before relying on them.
-- **Privacy:** your data stays on your own server. Never commit `.env`, sign-in files or `data/`.
-
-### Security model
-
-- **✅ gates** on every outward action. Words never confirm a button.
-- **Prompt-injection guards:** text from mail, the web or other people is data. The model's tools only read, and an action stands only if a separate check that sees nothing but your own messages says you asked for it.
-- **Allow-listed numbers only.** The WhatsApp bridge runs in its own venv without the keys.
-- **A hard monthly budget lock**, a nightly LLM-free security check, and a deploy gate of about 570 safety tests.
-- **No secrets in the repo.** Keys and tokens live in `.env` and gitignored token files. `scripts/release_scan.py` runs before every push (a local pre-push hook plus GitHub Actions), and any finding blocks the push.
+| `agent/` | The brain: understanding messages, calendar, reminders, tasks, "what is waiting for me", coordination, memory, the improvement loop |
+| `whatsapp/` | The bridge (linked device), the queue, the worker |
+| `config/features.py` | Which layers are on |
+| `integrations/` | Google Calendar, search. For studies: the university email, my.tau, the relevance filter |
+| `collectors/` · `generators/` · `pipelines/` | Smart Study: Panopto, Moodle, summaries, NotebookLM, site |
+| `deploy/` | systemd, crontab (`crontab.assistant.txt` for the assistant only), the deploy gate, hardening, git hooks |
+| `tests/` | `test_safety_critical.py` (the gate), `conversation_evals.py`, `test_assistant_only.py` |
+| `docs/FEATURES.md` · `docs/ARCHITECTURE.md` · `docs/COSTS.md` | Every capability and how to turn it on · a message's route and the safety gates · costs and how to save |
+| `vault_sync/` | The second brain: the assistant's area in the vault, maps, search over your notes, privacy scrubbing |
+| `docs/FAQ.md` | FAQ, the `setup_check` troubleshooting table, the `.env` variable dictionary, what the assistant can do |
+| `docs/RUNBOOK.md` | Server operations: failures and how to fix them |

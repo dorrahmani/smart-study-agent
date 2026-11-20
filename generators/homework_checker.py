@@ -1,5 +1,5 @@
 """
-Homework Checker - בודק תרגילים ומזהה שימוש בשיטות שלא נלמדו עדיין
+Homework Checker - checks exercises and detects use of methods not yet taught
 """
 
 import os
@@ -45,27 +45,27 @@ def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 
 class HomeworkChecker:
-    MODEL_GEMINI_OCR_FAST   = 'gemini-2.5-flash'                 # OCR לסריקה מודפסת (כמו בסיכומים)
-    MODEL_GEMINI_FLASH_LITE = 'gemini-3.1-flash-lite-preview'  # הכי זול — קוד Python
-    MODEL_GEMINI_PRO        = 'gemini-3.1-pro-preview'          # הכי חזק — מתמטיקה
+    MODEL_GEMINI_OCR_FAST   = 'gemini-2.5-flash'                 # OCR for a printed scan (as in the summaries)
+    MODEL_GEMINI_FLASH_LITE = 'gemini-3.1-flash-lite-preview'  # Cheapest — Python code
+    MODEL_GEMINI_PRO        = 'gemini-3.1-pro-preview'          # Strongest — math
 
-    # מיפוי קורס → (provider, model)
-    # 'gemini' → Google Genai SDK  |  'openai' → רק בבחירה ידנית בדשבורד
+    # Course → (provider, model) mapping
+    # 'gemini' → Google Genai SDK  |  'openai' → only when chosen manually in the dashboard
     _COURSE_CHECK_MODEL = {
-        'intro_to_cs':      ('gemini', 'gemini-3.1-flash-lite-preview'),  # Python → Flash-Lite (הכי זול)
-        'calculus':         ('gemini', 'gemini-3.1-pro-preview'),          # חדו"א → Pro
-        'linear_algebra':   ('gemini', 'gemini-3.1-pro-preview'),          # אלגברה → Pro
-        'linear_algebra_2': ('gemini', 'gemini-3.1-pro-preview'),          # אלגברה 2 → Pro
-        'discrete_math':    ('gemini', 'gemini-3.1-pro-preview'),          # מתמטיקה דיסקרטית → Pro
-        # סמסטר א' תשפ"ז
-        'probability':      ('gemini', 'gemini-3.1-pro-preview'),          # הסתברות → Pro
-        'software_1':       ('gemini', 'gemini-3.8-flash'),          # Java (נבדק כטקסט) → Flash
+        'intro_to_cs':      ('gemini', 'gemini-3.1-flash-lite-preview'),  # Python → Flash-Lite (cheapest)
+        'calculus':         ('gemini', 'gemini-3.1-pro-preview'),          # Calculus → Pro
+        'linear_algebra':   ('gemini', 'gemini-3.1-pro-preview'),          # Algebra → Pro
+        'linear_algebra_2': ('gemini', 'gemini-3.1-pro-preview'),          # Algebra 2 → Pro
+        'discrete_math':    ('gemini', 'gemini-3.1-pro-preview'),          # Discrete math → Pro
+        # Semester A, 5787 (2026-27)
+        'probability':      ('gemini', 'gemini-3.1-pro-preview'),          # Probability → Pro
+        'software_1':       ('gemini', 'gemini-3.8-flash'),          # Java (checked as text) → Flash
         'microeconomics_2': ('gemini', 'gemini-3.8-flash'),
         'macroeconomics':   ('gemini', 'gemini-3.8-flash'),
-        # כל שאר הקורסים → Gemini Pro (ברירת מחדל)
+        # All other courses → Gemini Pro (default)
     }
 
-    # OCR settings — Gemini Vision (Pro לכתב יד, Flash לסריקה מודפסת)
+    # OCR settings — Gemini Vision (Pro for handwriting, Flash for printed scans)
     OCR_DPI         = 150
     OCR_JPEG_QUAL   = 80
     OCR_BATCH_SIZE  = 4     # pages per vision call
@@ -82,7 +82,7 @@ class HomeworkChecker:
             except ImportError:
                 print('⚠️  google-genai לא מותקן — pip install google-genai')
 
-        # OpenAI client (אופציונלי — רק אם יש מפתח)
+        # OpenAI client (optional — only if there is a key)
         self._openai_client = None
         openai_key = os.getenv('OPENAI_API_KEY')
         if openai_key:
@@ -118,17 +118,17 @@ class HomeworkChecker:
         exercise_pdf_path: str,
         solution_pdf_path: Optional[str],
         course_key: str,
-        solution_code_path: Optional[str] = None,   # .py קובץ קוד (מדמ"ח)
-        code_filename: str = '',                      # שם הקובץ המקורי לבדיקת פורמט
+        solution_code_path: Optional[str] = None,   # .py code file (computer-science course)
+        code_filename: str = '',                      # original file name, for format checking
         theory_filename: str = '',
-        model_override: Optional[tuple] = None,      # (provider, model) לדריסת ברירת המחדל
-        target_questions: Optional[list] = None,     # [str] — בדוק רק שאלות אלו (תיקון)
-        previous_report_md: Optional[str] = None,    # תוכן דוח קודם — לבדיקת תיקונים
+        model_override: Optional[tuple] = None,      # (provider, model) to override the default
+        target_questions: Optional[list] = None,     # [str] — check only these questions (correction)
+        previous_report_md: Optional[str] = None,    # content of a previous report — for checking corrections
     ) -> dict:
         """
         Main method. Supports:
           - Single-file submissions: exercise PDF + solution file
-          - Dual-file submissions (מדמ"ח): exercise PDF + code .py + theory PDF
+          - Dual-file submissions (computer-science course): exercise PDF + code .py + theory PDF
 
         Returns structured feedback dict:
         {
@@ -138,13 +138,13 @@ class HomeworkChecker:
             'per_question': list,
             'main_mistakes': list,
             'strengths': list,
-            'filename_issues': list,   # בעיות פורמט שם קובץ
-            'static_issues': list,     # בעיות סטטיות בקוד
+            'filename_issues': list,   # file name format issues
+            'static_issues': list,     # static code issues
             'cost_usd': float,
             'tokens_in': int,
             'tokens_out': int,
         }
-        """
+"""
         # ── Validate inputs ──────────────────────────────────────────────────
         ex_path = Path(exercise_pdf_path)
         if not ex_path.exists():
@@ -171,7 +171,7 @@ class HomeworkChecker:
         static_issues   = []
 
         if hw_fmt:
-            # בדוק פורמט שמות קבצים
+            # Check file name format
             fn_issues = self._check_filenames(
                 code_filename or (code_path.name if code_path else ''),
                 theory_filename or (sol_path.name if sol_path else ''),
@@ -179,10 +179,10 @@ class HomeworkChecker:
             )
             filename_issues.extend(fn_issues)
 
-        static_hints: list[str] = []   # רמזים לקלוד (לא שגיאות ודאיות)
+        static_hints: list[str] = []   # hints for the LLM (not definite errors)
         is_java = bool(code_path) and (code_path.is_dir() or code_path.suffix.lower() == '.java')
         if code_path and not is_java:
-            # ניתוח סטטי של קוד Python
+            # Static analysis of Python code
             static_issues, static_hints = self._static_check_python(str(code_path), hw_fmt)
 
         # ── Read exercise ────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ class HomeworkChecker:
             previous_report_md=previous_report_md,
         )
 
-        # בחר provider ומודל — override ידני > ברירת מחדל לפי קורס
+        # Choose provider and model — manual override > per-course default
         if model_override is not None:
             provider, check_model = model_override
             print(f'🎛️  מודל נבחר ידנית: {provider}/{check_model}')
@@ -263,7 +263,7 @@ class HomeworkChecker:
         print(f'🤖 מודל בדיקה: {provider.upper()} / {check_model}')
 
         if provider == 'gemini':
-            # ── Gemini Flash (google-genai SDK החדש) ─────────────────────────
+            # ── Gemini Flash (the new google-genai SDK) ─────────────────────────
             from google.genai import types as _gtypes
             gemini_resp = self._gemini_client.models.generate_content(
                 model=check_model,
@@ -394,9 +394,9 @@ class HomeworkChecker:
         """
         Runs quick static checks on the submitted .py file.
         Returns (hard_issues, hints_for_claude):
-          hard_issues   — בעיות ודאיות שאין עליהן ויכוח (syntax, test() call)
-          hints_for_claude — מידע לקלוד שיפסוק אם זו בעיה (pass בפונקציה, print ללא return)
-        """
+          hard_issues   — definite issues that are not up for debate (syntax, test() call)
+          hints_for_claude — information for the LLM to judge whether it is a problem (pass in a function, print without return)
+"""
         import ast
 
         hard_issues: list[str] = []
@@ -407,14 +407,14 @@ class HomeworkChecker:
         except Exception:
             return (['לא ניתן לקרוא את קובץ הקוד'], [])
 
-        # 1. Syntax errors — ודאי תמיד
+        # 1. Syntax errors — always definite
         try:
             tree = ast.parse(source)
         except SyntaxError as e:
             hard_issues.append(f'שגיאת syntax בשורה {e.lineno}: {e.msg}')
-            return (hard_issues, hints)   # אין יותר מה לנתח
+            return (hard_issues, hints)   # nothing more to analyze
 
-        # 2. test()/check() ברמת הקובץ — ודאי: גורם לריצה בייבוא
+        # 2. test()/check() at file level — definite: causes a run on import
         for stmt in tree.body:
             if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
                 func = stmt.value.func
@@ -426,7 +426,7 @@ class HomeworkChecker:
                         f'יש להסיר לפני הגשה כי הקוד ירוץ אוטומטית בכל ייבוא'
                     )
 
-        # 3. פונקציות עם pass — רמז לקלוד (אולי שאלת רשות!)
+        # 3. Functions with pass — a hint for the LLM (maybe an optional question!)
         funcs_with_pass: list[str] = []
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -441,13 +441,13 @@ class HomeworkChecker:
                 f'רק אם הפונקציה שייכת לשאלת חובה — יש לסמן כבעיה.'
             )
 
-        # 4. פונקציות עם print בלבד ללא return — רמז לקלוד
-        #    (יתכן שהפונקציה אמורה להדפיס, כמו "ציור" פירמידה)
+        # 4. Functions with only print and no return — a hint for the LLM
+        #    (the function may be meant to print, like "ציור" ("drawing") a pyramid)
         funcs_print_no_return: list[str] = []
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name.startswith(('print_', 'draw_', 'display_', 'show_', 'main')):
-                    continue  # שמות שמרמזים על הדפסה — סביר
+                    continue  # names that hint at printing — plausible
                 has_return = any(
                     isinstance(n, ast.Return) and n.value is not None
                     for n in ast.walk(node)
@@ -1057,7 +1057,7 @@ Return ONLY the Java code."""
 {f"מדיניות כלי AI: {ai_policy}" if ai_policy else ""}
 """
 
-        # Hard issues (ודאיות): שגיאות syntax, קריאת test() ברמת הקובץ
+        # Hard issues (definite): syntax errors, a test() call at file level
         pre_checks_block = ''
         all_pre_issues = filename_issues + static_issues
         if all_pre_issues:
@@ -1068,7 +1068,7 @@ Return ONLY the Java code."""
 שלב בעיות אלו בתוצאות הבדיקה ובטעויות העיקריות.
 """
 
-        # Hints (רמזים): pass, print ללא return — קלוד יחליט
+        # Hints: pass, print without return — the LLM will decide
         hints_block = ''
         if static_hints:
             hints_list = '\n'.join(f'- {h}' for h in static_hints)
@@ -1323,7 +1323,7 @@ Return ONLY the Java code."""
             }
 
         recommendations = _tag_items('recommendations', 'item', raw_text)
-        # סנן "אין המלצות" מהרשימה
+        # Filter "אין המלצות" ("no recommendations") out of the list
         recommendations = [r for r in recommendations
                            if 'ממצה היטב' not in r and 'אין המלצות' not in r]
 
@@ -1402,7 +1402,7 @@ Return ONLY the Java code."""
                 opt_tag = ' (רשות)' if optional else ''
 
                 if status == 'נכון' and not feedback:
-                    # שאלה נכונה — שורה קצרה בלי פירוט
+                    # Correct question — a short line with no detail
                     lines.append(f'**שאלה {q_num}{opt_tag}** — ✅ נכון')
                 elif 'רשות' in status and 'לא הוגש' in status:
                     lines.append(f'**שאלה {q_num} (רשות)** — ⚪ לא הוגש (בסדר גמור)')
@@ -1487,18 +1487,18 @@ Return ONLY the Java code."""
         feedback_mds: list[str],
     ) -> dict:
         """
-        מנתח את כל דוחות הפידבק של קורס → מזהה נושאים חלשים →
-        מייצר תרגיל מתקן ממוקד (2-3 שאלות).
+        Analyzes all of a course's feedback reports → identifies weak topics →
+        generates a focused corrective exercise (2-3 questions).
 
         Returns:
             {
               'weak_topics': list[str],
-              'exercise_md': str,          # תרגיל בפורמט Markdown
-              'target_questions': list[str], # שאלות מספר שעל הסטודנט לתרגל
+              'exercise_md': str,          # exercise in Markdown format
+              'target_questions': list[str], # question numbers the student should practice
               'cost_usd': float,
             }
-        """
-        # קרא את כל הפידבקים
+"""
+        # Read all the feedback
         feedback_texts = []
         for path in feedback_mds:
             try:

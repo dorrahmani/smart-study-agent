@@ -33,7 +33,7 @@ _load_env_dotfile = load_env_dotfile          # the old name the scripts call
 
 
 load_env_dotfile()
-# כפה Gemini (לא לשתמש ב-GOOGLE_API_KEY של פרויקט שאין בו Gemini API)
+# Force Gemini (don't use the GOOGLE_API_KEY of a project that has no Gemini API enabled)
 if os.environ.get('GEMINI_API_KEY'):
     os.environ.pop('GOOGLE_API_KEY', None)
 

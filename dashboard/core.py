@@ -142,8 +142,8 @@ def check_password() -> bool:
     from dashboard.ui.components import html, esc, BRAND_SVG
     users = _users()
     if not users:
-        # fail CLOSED. קודם זה נתן admin לכל אחד כשמשתני הסביבה חסרים —
-        # מסוכן אם הדשבורד נחשף אי פעם לרשת (קרה: 8501 היה פתוח לאינטרנט).
+        # fail CLOSED. Previously this gave admin to everyone when the environment variables were missing —
+        # dangerous if the dashboard is ever exposed to the network (it happened: 8501 was open to the internet).
         st.error(
             '🔒 אין סיסמאות מוגדרות — הגישה חסומה.\n\n'
             'הגדר `DASHBOARD_PASSWORD` (ואופציונלי `DASHBOARD_FRIEND_PASSWORD`) '
@@ -252,7 +252,7 @@ def source_badges(sources: dict) -> str:
 
 
 def parse_email_list(raw: str) -> list:
-    """מחזיר רשימת כתובות מייל תקינות מטקסט (מופרדות בפסיק, נקודה-פסיק, או שורה)"""
+    """Returns a list of valid email addresses from text (separated by comma, semicolon, or newline)"""
     addrs = [a.strip() for a in re.split(r'[,;\n]', raw or '') if a.strip()]
     return [a for a in addrs if re.match(r'[^@\s]+@[^@\s]+\.[^@\s]+', a)]
 
@@ -265,7 +265,7 @@ LAST_LOG_PATH = LOGS_DIR / ".last_log"
 
 
 def launch_run(args: list):
-    """מריץ את הפייפליין ב-background בלי חלון. Log נכתב לקובץ שהדשבורד מציג."""
+    """Runs the pipeline in the background without a window. The log is written to a file the dashboard displays."""
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = LOGS_DIR / f"run_{ts}.log"
@@ -273,7 +273,7 @@ def launch_run(args: list):
 
     cmd = [PYTHON314, "-u"] + args  # -u = unbuffered
 
-    # Windows: CREATE_NO_WINDOW + DETACHED_PROCESS → תהליך רץ ברקע בלי חלון ונשאר חי
+    # Windows: CREATE_NO_WINDOW + DETACHED_PROCESS → the process runs in the background with no window and stays alive
     creationflags = 0
     if os.name == 'nt':
         creationflags = 0x08000000 | 0x00000008  # CREATE_NO_WINDOW | DETACHED_PROCESS
@@ -308,12 +308,12 @@ def get_last_log_path() -> Path | None:
 
 
 def is_run_active(log_path: Path) -> bool:
-    """מזהה אם הריצה עדיין פעילה לפי זה שה-log קיים ולא הסתיים במילת סיום."""
+    """Detects whether the run is still active by whether the log exists and hasn't ended with a finish word."""
     try:
         content = log_path.read_text(encoding='utf-8', errors='replace')
         if '✅ הושלם!' in content or '❌ שגיאה קריטית' in content:
             return False
-        # נחשב פעיל אם השתנה ב-5 דקות האחרונות
+        # Considered active if it changed in the last 5 minutes
         age = time.time() - log_path.stat().st_mtime
         return age < 300
     except Exception:
@@ -323,7 +323,7 @@ def is_run_active(log_path: Path) -> bool:
 # ─── recipients (full list) ──────────────────────────────────────────────────
 
 def load_all_recipients() -> dict:
-    """טוען recipients_full.json (הרשימה המלאה עם כל הנמענים)"""
+    """Loads recipients_full.json (the full list with all the recipients)"""
     full_path = ROOT / 'config' / 'recipients_full.json'
     base_path = ROOT / 'config' / 'recipients.json'
     for p in [full_path, base_path]:
@@ -342,7 +342,7 @@ def get_reviewer_email() -> str:
 
 
 def get_all_emails_for_course(course_key: str) -> list[str]:
-    """מחזיר רשימת כל הנמענים לקורס (global + course-specific), ללא כפילויות"""
+    """Returns a list of all the recipients for a course (global + course-specific), without duplicates"""
     rec = load_all_recipients()
     emails = list(rec.get('global', []))
     emails += rec.get(course_key, [])
@@ -375,7 +375,7 @@ def save_approval_log(log: dict):
 
 
 def pending_approvals() -> list[dict]:
-    """מחזיר רשימת סיכומים שנשלחו ל-reviewer אבל טרם אושרו לשליחה לכולם"""
+    """Returns a list of summaries that were sent to the reviewer but not yet approved for sending to everyone"""
     log = load_approval_log()
     return [
         {'key': k, **v}
@@ -385,7 +385,7 @@ def pending_approvals() -> list[dict]:
 
 
 def approve_and_send_all(entry: dict) -> tuple[int, int]:
-    """מאשר סיכום ושולח לכל הנמענים. מחזיר (sent, failed)."""
+    """Approves a summary and sends it to all the recipients. Returns (sent, failed)."""
     course_key = entry.get('course_key', '')
     md_path    = ROOT / entry.get('md_path', '')
     pdf_path   = ROOT / entry.get('pdf_path', '') if entry.get('pdf_path') else None
@@ -420,7 +420,7 @@ def approve_and_send_all(entry: dict) -> tuple[int, int]:
         failed = len(recipients)
 
     if sent > 0:
-        # עדכן approval_log → approved
+        # Update approval_log → approved
         log = load_approval_log()
         if entry['key'] in log:
             log[entry['key']]['status'] = 'approved'
@@ -431,7 +431,7 @@ def approve_and_send_all(entry: dict) -> tuple[int, int]:
 
 
 def skip_approval(entry: dict) -> None:
-    """סמן כ'אושר' ללא שליחה (status=skipped)."""
+    """Marks as 'approved' without sending (status=skipped)."""
     alog = load_approval_log()
     if entry['key'] in alog:
         alog[entry['key']]['status'] = 'skipped'
@@ -440,7 +440,7 @@ def skip_approval(entry: dict) -> None:
 
 
 def send_summary_to(summary: dict, recipient: str) -> bool:
-    """שולח סיכום ספציפי לנמען"""
+    """Sends a specific summary to a recipient"""
     try:
         from generators.gmail_sender import GmailSender
         from dotenv import load_dotenv

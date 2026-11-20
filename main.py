@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Smart Study Agent - Main Script
-מפעיל את כל המערכת: איסוף, עיבוד, סיכום ושליחה
+Runs the whole system: collection, processing, summarizing and sending
 """
 
 import os
@@ -21,7 +21,7 @@ import yaml
 import argparse
 from typing import List, Dict, Optional
 
-# הוסף את התיקייה הראשית ל-path
+# add the main folder to the path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from collectors.panopto_collector import PanoptoCollector
@@ -42,20 +42,20 @@ class SmartStudyAgent:
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
         
-        # אתחל מודולים
+        # initialize modules
         self.panopto = PanoptoCollector(config_path)
         self.moodle = MoodleCollector(config_path)
         self.summarizer = AISummarizer()
         self.mailer = GmailSender()
 
-        # התחבר ל-Panopto פעם אחת
+        # log in to Panopto once
         self.panopto.login()
         
         self.output_dir = Path("data/summaries")
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def collect_materials(self, course_key: str) -> Dict:
-        """אוסף חומרים עבור קורס"""
+        """Collects materials for a course"""
         print(f"\n{'='*60}")
         print(f"📚 שלב 1: איסוף חומרים עבור {course_key}")
         print(f"{'='*60}\n")
@@ -66,7 +66,7 @@ class SmartStudyAgent:
             'moodle': []
         }
 
-        # אסוף מ-Panopto
+        # collect from Panopto
         try:
             days_back = self.config['settings']['schedule'].get('days_back', 2)
             panopto_results = self.panopto.collect_course(course_key, days_back=days_back)
@@ -74,7 +74,7 @@ class SmartStudyAgent:
         except Exception as e:
             print(f"⚠️  שגיאה באיסוף מ-Panopto: {e}")
 
-        # אסוף מ-Moodle + Wikidot + Static PDF
+        # collect from Moodle + Wikidot + Static PDF
         try:
             moodle_results = self.moodle.collect_course(course_key)
             materials['moodle'] = moodle_results
@@ -85,17 +85,17 @@ class SmartStudyAgent:
         return materials
 
     def _load_cached_moodle(self, course_key: str) -> List[Dict]:
-        """Fallback: טוען קבצים שכבר הורדו מ-Moodle מהדיסק (כשיש timeout)."""
+        """Fallback: loads files already downloaded from Moodle from disk (when there is a timeout)."""
         import json as _json
         cached = []
 
-        # נסה לטעון מה-metadata JSON שנשמר בריצות קודמות
+        # try to load from the metadata JSON saved in previous runs
         meta_path = Path(f"data/moodle/{course_key}_metadata.json")
         if meta_path.exists():
             try:
                 with open(meta_path, 'r', encoding='utf-8') as f:
                     cached = _json.load(f)
-                # ודא שהקבצים עדיין קיימים בדיסק
+                # make sure the files still exist on disk
                 cached = [r for r in cached if r.get('local_path') and Path(r['local_path']).exists()]
                 if cached:
                     print(f"  📂 נטענו {len(cached)} קבצים מ-cache מקומי")
@@ -103,7 +103,7 @@ class SmartStudyAgent:
             except Exception:
                 pass
 
-        # אם אין metadata — סרוק את התיקייה ישירות
+        # if there is no metadata — scan the folder directly
         moodle_dir = Path(f"data/moodle/{course_key}")
         if moodle_dir.exists():
             for f in moodle_dir.glob("*.pdf"):
@@ -116,7 +116,7 @@ class SmartStudyAgent:
             if cached:
                 print(f"  📂 נסרקו {len(cached)} קבצים מ-{moodle_dir}")
 
-        # static_pdf תמיד
+        # static_pdf always
         static_pdf = self.config['courses'][course_key]['sources'].get('static_pdf')
         if static_pdf and Path(static_pdf).exists():
             cached.append({
@@ -131,12 +131,12 @@ class SmartStudyAgent:
     def match_pdf_to_video(self, video_title: str, moodle_items: List[Dict],
                            session_index: int = 0, item_type: str = 'lecture') -> tuple:
         """
-        מתאים PDF לסרטון בצורה חכמה.
-        מחזיר (local_path, source_type) או (None, None).
+        Smartly matches a PDF to a video.
+        Returns (local_path, source_type) or (None, None).
         source_type: 'moodle' | 'wikidot' | 'static_pdf'
-        session_index: מיקום ברשימה (0-based) — fallback למספר כאשר אין מספר בכותרת
-        item_type: 'lecture' | 'tutorial' — מגדיר איזה PDFs רלוונטיים
-        """
+        session_index: position in the list (0-based) — fallback for the number when the title has none
+        item_type: 'lecture' | 'tutorial' — defines which PDFs are relevant
+"""
         import re
 
         TUTORIAL_WORDS = {'תרגול', 'תרגיל', 'tutorial', 'recitation', 'exercise'}
@@ -155,10 +155,10 @@ class SmartStudyAgent:
             t = title.lower()
             return any(w in t for w in SKIP_WORDS)
 
-        # סנן: הרצאות מקבלות PDFs שאינם תרגולים; תרגולים מקבלים PDFs של תרגולים בלבד
+        # filter: lectures get PDFs that are not tutorials; tutorials get tutorial PDFs only
         def _is_relevant(item: dict) -> bool:
             if item.get('type') == 'static_pdf':
-                return item_type == 'lecture'  # static_pdf רק להרצאות
+                return item_type == 'lecture'  # static_pdf for lectures only
             title = item.get('file_info', {}).get('title', '')
             if _is_skip_pdf(title):
                 return False
@@ -176,12 +176,12 @@ class SmartStudyAgent:
         patterns = [
             r'(?:הרצאה|תרגול|תרגיל|lecture|tirgul|recitation)\s*(\d+)',
             r'שיעור\s*(\d+)',
-            r'(?:lec|rec)\s*(\d+)',   # lec1, rec2 ממדמ"ח wikidot
+            r'(?:lec|rec)\s*(\d+)',   # lec1, rec2 from the Computer Science wikidot
             r'\((\d+)\)',
             r'\b(\d{1,2})\b',
         ]
 
-        # חלץ מספר מכותרת הסרטון
+        # extract the number from the video title
         video_number = None
         for pattern in patterns:
             match = re.search(pattern, video_title, re.IGNORECASE)
@@ -193,7 +193,7 @@ class SmartStudyAgent:
             video_number = str(session_index + 1)
             print(f"  ℹ️  אין מספר בכותרת '{video_title}' — positional: {video_number}")
 
-        # 1. חפש כל PDFs עם אותו מספר (יכול להיות כמה — למשל בדידה הרצאה 3)
+        # 1. look for all PDFs with the same number (there can be several — e.g. Discrete Math lecture 3)
         if video_number:
             matched_items = []
             for item in relevant_items:
@@ -216,9 +216,9 @@ class SmartStudyAgent:
                 else:
                     titles = [it['file_info']['title'] for it in matched_items]
                     print(f"  ✅ {len(paths)} PDFs עבור #{video_number}: {titles}")
-                    return paths, source_type  # מחזיר list
+                    return paths, source_type  # returns a list
 
-        # 2. אם יש רק פריט רלוונטי אחד שאינו static_pdf — השתמש בו
+        # 2. if there is only one relevant item that is not static_pdf — use it
         non_static = [it for it in relevant_items if it.get('type') != 'static_pdf']
         if len(non_static) == 1:
             item = non_static[0]
@@ -226,13 +226,13 @@ class SmartStudyAgent:
             print(f"  ✅ פריט יחיד: {pdf_title}")
             return item['local_path'], item.get('type', 'moodle')
 
-        # 3. fallback: static_pdf (הרצאות בלבד)
+        # 3. fallback: static_pdf (lectures only)
         for item in relevant_items:
             if item.get('type') == 'static_pdf':
                 print(f"  ✅ static PDF: {item['local_path']}")
                 return item['local_path'], 'static_pdf'
 
-        # 4. fallback: הכי קרוב מבחינת מספר (למשל lec2 כשlec3 עדיין לא הועלה)
+        # 4. fallback: the closest by number (e.g. lec2 when lec3 hasn't been uploaded yet)
         if video_number:
             numbered = []
             for item in non_static:
@@ -244,7 +244,7 @@ class SmartStudyAgent:
                         numbered.append((n, item))
                         break
             if numbered:
-                # בחר את הכי קרוב שלא עולה על מספר הסרטון
+                # pick the closest one that does not exceed the video number
                 target = int(video_number)
                 below = [(n, it) for n, it in numbered if n <= target]
                 if below:
@@ -257,7 +257,7 @@ class SmartStudyAgent:
         return None, None
     
     def process_and_summarize(self, materials: Dict) -> List[str]:
-        """מעבד ויוצר סיכומים"""
+        """Processes and creates summaries"""
         print(f"\n{'='*60}")
         print(f"🤖 שלב 2: עיבוד וסיכום")
         print(f"{'='*60}\n")
@@ -271,14 +271,14 @@ class SmartStudyAgent:
         panopto_items = materials.get('panopto', [])
         moodle_items = materials.get('moodle', [])
 
-        # ספור הרצאות ותרגולים בנפרד (לפי positional PDF matching)
-        # מתחיל מכמות הסיכומים הקיימים כדי לקבל מספר הרצאה נכון גם בריצות נפרדות
+        # count lectures and tutorials separately (by positional PDF matching)
+        # starting from the number of existing summaries, to get the right lecture number even across separate runs
         _lec_dir = Path(f"data/summaries/{course_key}/lectures")
         _tut_dir = Path(f"data/summaries/{course_key}/tutorials")
         lecture_index = len(list(_lec_dir.glob("*.md"))) if _lec_dir.exists() else 0
         tutorial_index = len(list(_tut_dir.glob("*.md"))) if _tut_dir.exists() else 0
 
-        # טען הערות משוב מהדשבורד
+        # load feedback notes from the dashboard
         import json as _json
         ratings_path = Path("data/ratings.json")
         ratings_data = {}
@@ -288,24 +288,24 @@ class SmartStudyAgent:
             except Exception:
                 pass
 
-        # סיכומים מ-Panopto (תמלול + PDF)
+        # summaries from Panopto (transcript + PDF)
         for panopto_item in panopto_items:
             video_title = panopto_item['title']
             item_type = panopto_item.get('type', 'lecture')
             caption_path = panopto_item['srt_path']
             session_date = panopto_item.get('date', '')[:10]  # YYYY-MM-DD
 
-            # נתיב לפי מבנה: data/summaries/{course}/{lectures|tutorials}/{date} - {title}.md
+            # path by structure: data/summaries/{course}/{lectures|tutorials}/{date} - {title}.md
             summary_path = AISummarizer.build_summary_path(course_key, item_type, video_title, date=session_date)
 
-            # עדכן אינדקס לפי סוג
+            # update the index by type
             current_index = lecture_index if item_type == 'lecture' else tutorial_index
             if item_type == 'lecture':
                 lecture_index += 1
             else:
                 tutorial_index += 1
 
-            # דלג אם הסיכום כבר קיים
+            # skip if the summary already exists
             if Path(summary_path).exists():
                 print(f"⏭️  סיכום קיים: {summary_path}")
                 summaries.append(summary_path)
@@ -313,7 +313,7 @@ class SmartStudyAgent:
 
             matching_pdf = None
             pdf_source_type = None
-            # מחפש PDF גם להרצאות וגם לתרגולים
+            # look for a PDF for both lectures and tutorials
             matching_pdf, pdf_source_type = self.match_pdf_to_video(
                 video_title, moodle_items, session_index=current_index, item_type=item_type
             )
@@ -322,18 +322,18 @@ class SmartStudyAgent:
 
             try:
                 notebook_offset = course_config.get('notebook_offset', 0)
-                # בדוק אם יש הערות משוב מהדשבורד לסיכום זה
+                # check whether there are dashboard feedback notes for this summary
                 type_folder = 'lectures' if item_type == 'lecture' else 'tutorials'
                 rating_key = f"{course_key}/{type_folder}/{Path(summary_path).name}"
                 feedback_data = ratings_data.get(rating_key, {})
                 user_feedback = feedback_data.get('notes', '') if feedback_data.get('feedback_pending') else ''
                 if user_feedback:
                     print(f"  📝 נמצאו הערות משוב — מיישם בסיכום")
-                    # סמן שהוחל
+                    # mark as applied
                     ratings_data[rating_key]['feedback_pending'] = False
                     ratings_path.write_text(_json.dumps(ratings_data, ensure_ascii=False, indent=2), encoding='utf-8')
 
-                # אם יש feedback_pending מסיכום קודם של אותו קורס — קח אותו
+                # if there is a feedback_pending from a previous summary of the same course — take it
                 if not user_feedback:
                     type_folder = 'lectures' if item_type == 'lecture' else 'tutorials'
                     prefix = f"{course_key}/{type_folder}/"
@@ -344,7 +344,7 @@ class SmartStudyAgent:
                                 and rk != rating_key):
                             user_feedback = rdata['notes']
                             print(f"  📝 נמצא משוב מסיכום קודם ({rk.split('/')[-1]}) — מיישם")
-                            # סמן כהוחל
+                            # mark as applied
                             ratings_data[rk]['feedback_pending'] = False
                             ratings_path.write_text(
                                 _json.dumps(ratings_data, ensure_ascii=False, indent=2),
@@ -364,7 +364,7 @@ class SmartStudyAgent:
                     user_feedback=user_feedback
                 )
 
-                # ── אל תשמור סיכומי שגיאה ──────────────────────────────────────
+                # ── do not save error summaries ──────────────────────────────────
                 if summary.startswith('# שגיאה'):
                     print(f"❌ הסיכום נכשל (API error) — לא נשמר: {video_title}")
                     continue
@@ -374,7 +374,7 @@ class SmartStudyAgent:
                                              lecture_title=video_title,
                                              sources=sources)
 
-                # ── הוסף טיפי פרופסור אוטומטית ───────────────────────────
+                # ── add professor tips automatically ───────────────────────────
                 try:
                     from generators.professor_agent import ProfessorAgent
                     print(f"\n👨‍🏫 פרופסור מוסיף טיפים...")
@@ -384,7 +384,7 @@ class SmartStudyAgent:
                 except Exception as e:
                     print(f"  ⚠️  פרופסור נכשל (לא קריטי): {e}")
 
-                # ── סנכרן ל-NotebookLM אוטומטית ───────────────────────────
+                # ── sync to NotebookLM automatically ───────────────────────────
                 try:
                     from generators.notebooklm_agent import NotebookLMAgent
                     _nlm = NotebookLMAgent()
@@ -392,7 +392,7 @@ class SmartStudyAgent:
                         _nlm_scope = "lectures_only" if item_type == "lecture" else "tutorials_only"
                         _pdf_path  = summary_path.replace(".md", ".pdf")
                         _pdfs_to_sync = [_pdf_path] if Path(_pdf_path).exists() else []
-                        # חפש SRT — נמצאים ב-data/panopto/{course_key}_{title}.srt
+                        # look for SRT — located in data/panopto/{course_key}_{title}.srt
                         _safe_title = re.sub(r'[<>:"/\\|?*]', '', video_title).strip()
                         _srt_path = Path("data/panopto") / f"{course_key}_{_safe_title}.srt"
                         _srt_files = [str(_srt_path)] if _srt_path.exists() else []
@@ -403,7 +403,7 @@ class SmartStudyAgent:
                                 summary_pdfs=_pdfs_to_sync,
                                 srt_files=_srt_files,
                             )
-                            # סנכרן גם ל-notebook "all" (כל החומר)
+                            # also sync to the "all" notebook (all the material)
                             _nlm.sync_sources(
                                 course_key, "all",
                                 summary_pdfs=_pdfs_to_sync,
@@ -422,7 +422,7 @@ class SmartStudyAgent:
             except Exception as e:
                 print(f"❌ שגיאה ביצירת סיכום עבור {video_title}: {e}")
             finally:
-                # מחק וידאו זמני אחרי הסיכום (רק אם זה קובץ מקומי, לא URL)
+                # delete the temporary video after summarizing (only if it is a local file, not a URL)
                 if video_path and not video_path.startswith('http') and Path(video_path).exists():
                     try:
                         Path(video_path).unlink()
@@ -430,14 +430,14 @@ class SmartStudyAgent:
                     except Exception:
                         pass
 
-        # אם אין הרצאות חדשות מ-Panopto - אין מה לשלוח
+        # if there are no new lectures from Panopto - nothing to send
         if not panopto_items:
             print("ℹ️  אין הרצאות/תרגולים חדשים מ-Panopto - אין מה לשלוח")
 
         return summaries
     
     def _load_sent_log(self) -> dict:
-        """טוען יומן שליחות ל-reviewer (config/reviewer_sent_log.json)"""
+        """Loads the reviewer send log (config/reviewer_sent_log.json)"""
         import json
         log_path = Path("config/reviewer_sent_log.json")
         if log_path.exists():
@@ -449,7 +449,7 @@ class SmartStudyAgent:
         return {}
 
     def _save_sent_log(self, sent: dict):
-        """שומר יומן שליחות ל-reviewer"""
+        """Saves the reviewer send log"""
         import json
         log_path = Path("config/reviewer_sent_log.json")
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -457,7 +457,7 @@ class SmartStudyAgent:
             json.dump(sent, f, ensure_ascii=False, indent=2)
 
     def _load_approval_log(self) -> dict:
-        """טוען יומן אישורים (config/approval_log.json)"""
+        """Loads the approval log (config/approval_log.json)"""
         import json
         log_path = Path("config/approval_log.json")
         if log_path.exists():
@@ -476,7 +476,7 @@ class SmartStudyAgent:
             json.dump(log, f, ensure_ascii=False, indent=2)
 
     def _get_reviewer_email(self) -> str:
-        """מחזיר כתובת ה-reviewer מ-recipients_full.json או מהקונפיג"""
+        """Returns the reviewer's address from recipients_full.json or from the config"""
         import json as _j
         for rpath in [Path("config/recipients_full.json"), Path("config/recipients.json")]:
             if rpath.exists():
@@ -492,7 +492,7 @@ class SmartStudyAgent:
 
     @staticmethod
     def _summary_lecture_date(summary_path: str):
-        """מחלץ את תאריך ההרצאה מתחילית שם הקובץ (YYYY-MM-DD). None אם אין."""
+        """Extracts the lecture date from the file name prefix (YYYY-MM-DD). None if there is none."""
         from datetime import datetime as _dt
         m = re.search(r'(\d{4}-\d{2}-\d{2})', Path(summary_path).name)
         if not m:
@@ -504,9 +504,9 @@ class SmartStudyAgent:
 
     def send_summaries(self, summaries: List[str], course_key: str):
         """
-        שלב 3: שולח סיכומים חדשים רק ל-reviewer.
-        מסמן כ-'pending' ב-approval_log — הדשבורד יראה כפתור אישור לשליחה לכולם.
-        """
+        Step 3: sends new summaries to the reviewer only.
+        Marks as 'pending' in approval_log — the dashboard will show an approval button for sending to everyone.
+"""
         print(f"\n{'='*60}")
         print(f"📧 שלב 3: שליחת סיכומים")
         print(f"{'='*60}\n")
@@ -524,9 +524,9 @@ class SmartStudyAgent:
         for summary_path in summaries:
             summary_key = str(Path(summary_path)).replace('\\', '/')
 
-            # שער רעננות — הגנה קשיחה: אל תשלח סיכום להרצאה ישנה, גם אם sent_log
-            # התאפס (כמו בריצת הקרון בענן עם checkout טרי). זה מונע שליחה חוזרת
-            # של כל הסיכומים הישנים בכל ריצה — הבאג שהציף את המרצה.
+            # freshness gate — hard protection: do not send a summary for an old lecture, even if sent_log
+            # was reset (as in the cloud cron run with a fresh checkout). This prevents resending
+            # all the old summaries on every run — the bug that flooded the lecturer.
             lec_date = self._summary_lecture_date(summary_path)
             if lec_date is not None:
                 from datetime import date as _date
@@ -535,7 +535,7 @@ class SmartStudyAgent:
                     print(f"⏭️  ישן מדי ({age_days} ימים > {max_age}) — לא נשלח: {summary_key}")
                     continue
 
-            # דלג אם כבר נשלח ל-reviewer
+            # skip if already sent to the reviewer
             if summary_key in sent_log:
                 print(f"⏭️  כבר נשלח: {summary_key}")
                 continue
@@ -565,7 +565,7 @@ class SmartStudyAgent:
                     from datetime import datetime as _dt
                     now_iso = _dt.now().isoformat()
                     newly_sent[summary_key] = now_iso
-                    # רשום ב-approval_log כ-pending אם עדיין לא אושר
+                    # record in approval_log as pending if not yet approved
                     if summary_key not in approval_log:
                         approval_log[summary_key] = {
                             'status': 'pending',
@@ -588,7 +588,7 @@ class SmartStudyAgent:
             print(f"✅ נשלחו {len(newly_sent)} סיכומים חדשים")
             print(f"   ⏳ ממתין לאישורך בדשבורד לפני שליחה לכולם")
 
-            # ── שלב 3b: חידון לכל סיכום חדש ──────────────────────────────
+            # ── step 3b: a quiz for every new summary ──────────────────────────────
             self.generate_and_send_quizzes(newly_sent, course_key, course_name, reviewer)
 
     def generate_and_send_quizzes(
@@ -598,7 +598,7 @@ class SmartStudyAgent:
         course_name: str,
         recipient: str,
     ):
-        """מייצר חידון PDF נפרד לכל סיכום חדש ושולח למייל reviewer."""
+        """Generates a separate PDF quiz for every new summary and sends it to the reviewer's email."""
         try:
             from generators.quiz_generator import QuizGenerator
         except ImportError as e:
@@ -609,7 +609,7 @@ class SmartStudyAgent:
         for summary_key in newly_sent:
             md_path = Path(summary_key)
             if not md_path.exists():
-                # נסה נתיב יחסי
+                # try a relative path
                 md_path = Path(summary_key.replace('data/', 'data/'))
             if not md_path.exists():
                 print(f"  ⚠️ לא נמצא קובץ לחידון: {summary_key}")
@@ -631,14 +631,14 @@ class SmartStudyAgent:
                 print(f"  ❌ שגיאה ביצירת חידון: {e}")
 
     def generate_podcast_for_course(self, course_key: str, scope: str = 'latest') -> str | None:
-        """מייצר פודקאסט NotebookLM. מחזיר path ל-MP3 או None."""
+        """Generates a NotebookLM podcast. Returns the path to the MP3 or None."""
         try:
             from generators.notebooklm_agent import NotebookLMAgent
             agent = NotebookLMAgent()
             course_name = self.config['courses'][course_key]['name']
             print(f"\n🎙️  מייצר פודקאסט: {course_name} ({scope})")
 
-            # סנכרן קודם את הסיכומים האחרונים
+            # first sync the latest summaries
             agent.sync_sources(course_key, scope)
 
             mp3_path = agent.generate_podcast(
@@ -654,7 +654,7 @@ class SmartStudyAgent:
             return None
 
     def _sync_obsidian(self):
-        """מסנכרן סיכומים וחידונים ל-Obsidian vault (שקט — לא קריטי)."""
+        """Syncs summaries and quizzes to the Obsidian vault (silent — not critical)."""
         try:
             import sys as _sys
             _sys.path.insert(0, str(Path(__file__).parent))
@@ -665,34 +665,34 @@ class SmartStudyAgent:
             print(f"  ⚠️ Obsidian sync: {e}")
 
     def run_course(self, course_key: str):
-        """מריץ את כל התהליך עבור קורס אחד"""
+        """Runs the whole process for a single course"""
         print(f"\n{'#'*60}")
         print(f"# מעבד קורס: {self.config['courses'][course_key]['name']}")
         print(f"{'#'*60}\n")
 
-        # שלב 1: איסוף
+        # step 1: collection
         materials = self.collect_materials(course_key)
 
-        # שלב 2: סיכום
+        # step 2: summarizing
         summaries = self.process_and_summarize(materials)
 
-        # שלב 3: שליחה
+        # step 3: sending
         if summaries:
             self.send_summaries(summaries, course_key)
         else:
             print("⚠️  לא נוצרו סיכומים")
 
-        # שלב 4: סנכרון Obsidian
+        # step 4: Obsidian sync
         self._sync_obsidian()
     
     def run_all(self):
-        """מריץ את כל הקורסים"""
+        """Runs all the courses"""
         print("\n" + "="*60)
         print("🎓 Smart Study Agent - מצב מלא")
         print("="*60 + "\n")
         
-        # רק קורסי הסמסטר הנוכחי. הקורסים הישנים נשארים בקונפיג (היסטוריה,
-        # vault ו-RAG) אבל אין טעם לסרוק אותם כל יום — ר' ACTIVE_COURSES.
+        # only the current semester's courses. The old courses stay in the config (history,
+        # vault and RAG) but there is no point scanning them every day — see ACTIVE_COURSES.
         all_keys = list(self.config['courses'].keys())
         try:
             from config.paths import ACTIVE_COURSES
@@ -739,11 +739,11 @@ def main():
     
     args = parser.parse_args()
     
-    # טען environment variables
+    # load environment variables
     from dotenv import load_dotenv
     load_dotenv(override=True)
 
-    # שער סמסטר: אל תריץ את הצינור מחוץ לחלון הסמסטר (לפני התחברות ל-Panopto)
+    # semester gate: do not run the pipeline outside the semester window (before logging in to Panopto)
     try:
         with open(args.config, 'r', encoding='utf-8') as _f:
             _cfg = yaml.safe_load(_f)
@@ -755,10 +755,10 @@ def main():
         print("   אין איסוף / סיכום / שליחה. להרצה ידנית בכל זאת: SMART_STUDY_FORCE=1")
         return
 
-    # אתחל
+    # initialize
     agent = SmartStudyAgent(args.config)
     
-    # הרץ
+    # run
     if args.course:
         agent.run_course(args.course)
     elif args.all:

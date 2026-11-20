@@ -55,7 +55,7 @@ def _load_env_dotfile() -> None:
 
 
 _load_env_dotfile()
-# כפה Gemini (לא לשתמש ב-GOOGLE_API_KEY של פרויקט שאין בו Gemini API)
+# Force Gemini (don't use the GOOGLE_API_KEY of a project that has no Gemini API)
 if os.environ.get('GEMINI_API_KEY'):
     os.environ.pop('GOOGLE_API_KEY', None)
 
@@ -254,7 +254,7 @@ def _run_bot() -> None:
                      "שליחת מייל" or "יצירת סיכום". Shown in the message.
 
         Returns a single string ready to send via safe_reply.
-        """
+"""
         msg = str(exc)
         msg_l = msg.lower()
         cls = type(exc).__name__
@@ -2566,7 +2566,7 @@ def _run_bot() -> None:
 
     async def _maybe_practice_photo(update: Update, ctx) -> bool:
         """True when the photo was taken by the practice grader (reply to a practice set,
-        or a "תרגיل N" caption while a set is active)."""
+        or a "תרגיל N" caption while a set is active)."""
         import re as _re_pp
         import asyncio as _aio_pp
         msg = update.message

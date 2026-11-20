@@ -1,5 +1,5 @@
 """
-Gmail Sender - שולח סיכומים במייל
+Gmail Sender - sends summaries by email
 """
 
 import os
@@ -35,34 +35,34 @@ class GmailSender:
         self._authenticate()
     
     def _authenticate(self):
-        """מבצע אימות עם Gmail API"""
+        """Authenticates with the Gmail API"""
         
-        # בדוק אם יש token שמור
+        # Check whether a saved token exists
         token_path = Path('config/gmail_token.pickle')
         
         if token_path.exists():
             with open(token_path, 'rb') as token:
                 self.creds = pickle.load(token)
         
-        # אם אין credentials תקפים, התחבר מחדש
+        # If there are no valid credentials, log in again
         if not self.creds or not self.creds.valid:
             if self.creds and self.creds.expired and self.creds.refresh_token:
                 self.creds.refresh(Request())
             else:
-                # קרא credentials מ-environment variable
+                # Read credentials from an environment variable
                 credentials_json = os.getenv('GMAIL_CREDENTIALS_JSON')
                 
                 if not credentials_json:
                     raise ValueError("GMAIL_CREDENTIALS_JSON לא מוגדר!")
                 
-                # שמור זמנית לקובץ
+                # Save temporarily to a file
                 temp_creds_path = Path('config/credentials.json')
                 temp_creds_path.parent.mkdir(exist_ok=True)
                 
                 with open(temp_creds_path, 'w') as f:
                     f.write(credentials_json)
                 
-                # בצע OAuth flow
+                # Run the OAuth flow
                 flow = InstalledAppFlow.from_client_secrets_file(
                     str(temp_creds_path),
                     self.SCOPES
@@ -70,14 +70,14 @@ class GmailSender:
                 
                 self.creds = flow.run_local_server(port=0)
                 
-                # מחק קובץ זמני
+                # Delete the temporary file
                 temp_creds_path.unlink()
             
-            # שמור token לשימוש עתידי
+            # Save the token for future use
             with open(token_path, 'wb') as token:
                 pickle.dump(self.creds, token)
         
-        # צור service
+        # Create the service
         self.service = build('gmail', 'v1', credentials=self.creds)
         print("✅ התחברות ל-Gmail הצליחה")
     
@@ -88,17 +88,17 @@ class GmailSender:
         body_html: str,
         attachment_path: Optional[str] = None
     ) -> dict:
-        """יוצר הודעת אימייל עם קובץ מצורף"""
+        """Creates an email message with an attachment"""
         
         message = MIMEMultipart()
         message['to'] = to
         message['subject'] = subject
         
-        # הוסף גוף ההודעה
+        # Add the message body
         msg_body = MIMEText(body_html, 'html', 'utf-8')
         message.attach(msg_body)
         
-        # הוסף קובץ מצורף אם יש
+        # Add an attachment if there is one
         if attachment_path and Path(attachment_path).exists():
             with open(attachment_path, 'rb') as f:
                 attachment = MIMEApplication(f.read(), _subtype='pdf')
@@ -109,7 +109,7 @@ class GmailSender:
                 )
                 message.attach(attachment)
         
-        # קידוד base64
+        # base64 encoding
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         
         return {'raw': raw_message}
@@ -121,7 +121,7 @@ class GmailSender:
         body_html: str,
         attachment_path: Optional[str] = None
     ) -> bool:
-        """שולח אימייל"""
+        """Sends an email"""
         
         print(f"📧 שולח מייל אל: {to}")
         print(f"📝 נושא: {subject}")
@@ -147,11 +147,11 @@ class GmailSender:
             return False
     
     def _strip_metadata(self, md_text: str) -> str:
-        """מסיר כותרת מטא-דאטה (חומרים, עלות API) מהמארקדאון לפני שליחה.
-        המטא-דאטה מופיעה לפני קו ה-'---' הראשון שאחריו מתחיל הסיכום עצמו."""
+        """Strips the metadata header (materials, API cost) from the markdown before sending.
+        The metadata appears before the first '---' line, after which the summary itself begins."""
         import re
-        # מחפש את הגבול הראשון: שורת --- בנפרד ואחריה שורת כותרת # או תוכן
-        # כל מה שלפניה הוא מטא-דאטה
+        # Looks for the first boundary: a standalone --- line followed by a # heading line or content
+        # Everything before it is metadata
         parts = re.split(r'\n---\n', md_text, maxsplit=1)
         if len(parts) == 2:
             return parts[1].lstrip('\n')
@@ -166,9 +166,9 @@ class GmailSender:
         recipient: Optional[str] = None,
         recipients: Optional[list] = None
     ) -> bool:
-        """שולח סיכום במייל לנמען אחד או יותר"""
+        """Sends a summary by email to one or more recipients"""
 
-        # בנה רשימת נמענים
+        # Build the recipient list
         all_recipients = []
         if recipients:
             all_recipients = list(recipients)
@@ -191,7 +191,7 @@ class GmailSender:
         clean_md = self._strip_metadata(summary_content)
 
         if summary_pdf_path and Path(summary_pdf_path).exists():
-            # צור PDF נקי (ללא מטא-דאטה) לשליחה
+            # Create a clean PDF (without metadata) to send
             from generators.pdf_generator import markdown_to_pdf
             import tempfile, os as _os
             tmp_pdf = summary_pdf_path.replace('.pdf', '_send.pdf')
@@ -214,7 +214,7 @@ class GmailSender:
             if not ok:
                 success = False
 
-        # נקה PDF זמני
+        # Clean up the temporary PDF
         if tmp_pdf:
             try:
                 import os as _os
@@ -225,7 +225,7 @@ class GmailSender:
         return success
     
     def _short_html(self, course_name: str, lecture_title: str, date_str: str) -> str:
-        """גוף מייל קצר ב-RTL כשיש PDF מצורף"""
+        """Short RTL email body when a PDF is attached"""
         S = ('direction:rtl;text-align:right;font-family:Arial,sans-serif;'
              'max-width:600px;margin:0 auto;padding:24px;color:#1a1a1a')
         return (
@@ -239,7 +239,7 @@ class GmailSender:
         )
 
     def _inline(self, text: str) -> str:
-        """המרת inline markdown (bold, code, timestamps) בתוך שורה"""
+        """Converts inline markdown (bold, code, timestamps) within a line"""
         import re
         # Bold: **text**
         text = re.sub(r'\*\*(.+?)\*\*', r'<strong style="color:#c0392b;font-weight:bold">\1</strong>', text)
@@ -255,9 +255,9 @@ class GmailSender:
         return text
 
     def _markdown_to_html(self, markdown_text: str) -> str:
-        """המרת Markdown ל-HTML עם inline styles (Gmail מסיר <style> בלוקים)"""
+        """Converts Markdown to HTML with inline styles (Gmail strips <style> blocks)"""
 
-        # Styles כ-constants
+        # Styles as constants
         S_BODY  = ('direction:rtl;text-align:right;font-family:Arial,sans-serif;'
                    'line-height:1.8;max-width:860px;margin:0 auto;padding:24px 16px;'
                    'color:#1a1a1a;background:#ffffff')
@@ -357,10 +357,10 @@ class GmailSender:
 
 
 if __name__ == "__main__":
-    # טסט
+    # Test
     sender = GmailSender()
     
-    # דוגמה
+    # Example
     sender.send_summary(
         course_name="חדו\"א 2ב",
         lecture_title="אינטגרלים - הרצאה 5",

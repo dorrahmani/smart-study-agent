@@ -1,4 +1,4 @@
-"""scripts/sync_obsidian_all.py — מעדכן את כל הסיכומים+חידונים ב-Obsidian + מריץ relinker."""
+"""scripts/sync_obsidian_all.py — updates all the summaries+quizzes in Obsidian + runs the relinker."""
 import sys, traceback
 sys.path.insert(0, '.')
 try:

@@ -26,7 +26,7 @@ def srt_is_good_hebrew(path, min_chars: int = 5000, min_ratio: float = 0.20) -> 
     min_ratio=0.20 means ≥20% of alphabetic chars must be Hebrew (א-ת).
     Cyrillic SRTs score ~0%, English SRTs for Hebrew lectures score ~0-5%.
     Real Hebrew lecture SRTs typically score 50-90%.
-    """
+"""
     p = Path(path)
     if not p.exists() or p.stat().st_size < min_chars:
         return False

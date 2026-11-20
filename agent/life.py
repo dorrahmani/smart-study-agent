@@ -5,8 +5,8 @@ agent/life.py — the "personal life" layer of the agent (The owner 04/10/2026, 
   lists      "תוסיף חלב וביצים לרשימת הקניות" · "מה ברשימת הקניות?" · "קניתי חלב" · "נקה את רשימת הקניות"
              (shared by the household — the owner and the partner see and edit the same lists)
   reminders  "תזכיר לי מחר ב-9 להתקשר לבנק" · "כל יום ב-8 לקחת ויטמין" · "כל שני ב-18:00 …" ·
-             "… עד שאעשה" (nag every 30 min, max 4) — fired by the worker; ✅ בוצע / ⏰ עוד שעה / 🌙 מחר
-  email      "תנסח מייל למרצה שאני חולה ולא אגיע" → draft → 1 שלח / 2 בטל (never sent without that ✅)
+             "… עד שאעשה" (nag every 30 min, max 4) — fired by the worker; ✅ בוצע (done) / ⏰ עוד שעה (in an hour) / 🌙 מחר (tomorrow)
+  email      "תנסח מייל למרצה שאני חולה ולא אגיע" → draft → 1 שלח (send) / 2 בטל (cancel) (never sent without that ✅)
 
 Simple phrasings are matched with regexes (fast, free, deterministic); only reminder times and email
 drafting go through Gemini. Storage: data/agent_life.json (atomic writes).

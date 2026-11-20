@@ -15,7 +15,7 @@
 30 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Security Check" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/security_check.py" >> /home/ubuntu/smart_study_agent/logs/security_check.log 2>&1
 # Self-improvement loop (agent/improve.py): adaptive cadence, at most 2 fixes a night, every one behind your ✅ and the test gate
 0 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Agent Review" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/agent_daily_review.py" >> /tmp/agent_review.log 2>&1
-# Weekly report (Sunday): the bot's own week + "🗓️ השבוע שלך" (agent/weekly_personal, no LLM)
+# Weekly report (Sunday): the bot's own week + "🗓️ השבוע שלך" ("your week") (agent/weekly_personal, no LLM)
 0 7 * * 0 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Weekly Bot Report" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/weekly_bot_report.py" >> /home/ubuntu/smart_study_agent/logs/weekly_bot_report.log 2>&1
 # Nightly consistency check (no LLM, 02:50 IL): contradictions between the stores; only provably safe fixes, each with its undo
 50 2 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Consistency Check" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/consistency_check.py" >> /home/ubuntu/smart_study_agent/logs/consistency_check.log 2>&1

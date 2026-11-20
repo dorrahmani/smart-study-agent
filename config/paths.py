@@ -74,13 +74,13 @@ def ensure_dirs() -> None:
 
 # ─── course identity (shared by collectors, exporters, dashboard) ────────
 COURSE_NAMES = {
-    # --- סמסטר ב' תשפ"ו (הסתיים 07/2026) — נשמר להיסטוריה, אין למחוק ---
+    # --- Semester B 5786 (ended 07/2026) — kept for history, do not delete ---
     'calculus_2':       'חשבון דיפרנציאלי ואינטגרלי 2ב',
     'discrete_math_2':  'מתמטיקה בדידה 2',
     'linear_algebra_2': 'אלגברה לינארית 2ב',
     'microeconomics':   "מיקרו כלכלה א'",
     'intro_to_cs':      'מבוא מורחב למדמ"ח',
-    # --- סמסטר א' תשפ"ז (17.10.2026 – 18.01.2027) ---
+    # --- Semester A 5787 (17.10.2026 – 18.01.2027) ---
     'probability':      'הסתברות וסטטיסטיקה',
     'software_1':       'תוכנה 1',
     'microeconomics_2': 'מיקרו כלכלה ב׳',
@@ -128,12 +128,12 @@ VAULT_COURSE_FOLDER_TO_KEY = {
     "מיקרו כלכלה א'":                 'microeconomics',
     'מבוא מורחב למדמח':              'intro_to_cs',
     'מבוא מורחב למדמ"ח':             'intro_to_cs',
-    # סמסטר א' תשפ"ז
+    # Semester A 5787
     'הסתברות וסטטיסטיקה':            'probability',
     'תוכנה 1':                        'software_1',
     'מבוא להנדסת תוכנה':              'software_1',
     'הנדסת תוכנה':                    'software_1',
     'מיקרו כלכלה ב׳':                 'microeconomics_2',
-    "מיקרו כלכלה ב'":                 'microeconomics_2',  # גרש רגיל (תאימות)
+    "מיקרו כלכלה ב'":                 'microeconomics_2',  # regular geresh (compatibility)
     'מאקרו כלכלה':                    'macroeconomics',
 }

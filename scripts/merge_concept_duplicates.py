@@ -1,8 +1,8 @@
 """
 scripts/merge_concept_duplicates.py
 ====================================
-מאחד 8 קבוצות מושגים כפולים שזוהו ב-🔍 דוח כפילויות.md.
-לכל זוג: שומר את הגרסה עם __suffix (יותר ספציפית), מאחד תוכן, מעדכן wikilinks.
+Merges 8 groups of duplicate concepts identified in the 🔍 דוח כפילויות.md report.
+For each pair: keeps the version with the __suffix (more specific), merges content, updates wikilinks.
 """
 import sys, os, re
 from pathlib import Path
@@ -15,7 +15,7 @@ VAULT = Path(os.environ.get('OBSIDIAN_VAULT_PATH', str(Path.home() / 'Documents'
 STUDY = VAULT / 'Smart Study Agent'
 CONCEPTS = STUDY / 'מושגים'
 
-# (loser, winner) — מוחקים את loser, מפנים אליו → winner
+# (loser, winner) — delete the loser, redirect links to it → winner
 MERGES = [
     ('budget_constraint',                   'budget_constraint__econ'),
     ('consumer_optimization_problem',       'consumer_optimization_problem__econ'),
@@ -47,13 +47,13 @@ def merge_pair(loser_stem: str, winner_stem: str, stats: dict):
         print(f'  ⚠️  {winner_stem}: אין קובץ winner — מדלג')
         return
 
-    # קרא תוכן
+    # read the content
     loser_text = loser_path.read_text(encoding='utf-8')
     winner_text = winner_path.read_text(encoding='utf-8')
     _, loser_body = split_fm(loser_text)
     winner_fm, winner_body = split_fm(winner_text)
 
-    # אחד תוכן (הוסף את הloser בסוף ה-winner תחת כותרת)
+    # merge content (append the loser at the end of the winner under a heading)
     loser_body_clean = loser_body.strip()
     if loser_body_clean and loser_body_clean != winner_body.strip():
         merge_section = f'\n\n## תוכן ממוזג מ-`{loser_stem}`\n\n{loser_body_clean}\n'
@@ -61,7 +61,7 @@ def merge_pair(loser_stem: str, winner_stem: str, stats: dict):
         winner_path.write_text(new_winner, encoding='utf-8')
         print(f'  📝 [{winner_stem}] הוספתי תוכן מ-{loser_stem}')
 
-    # עדכן wikilinks בכל הוולט: [[loser]] / [[loser|alias]] → [[winner]] / [[winner|alias]]
+    # update wikilinks across the vault: [[loser]] / [[loser|alias]] → [[winner]] / [[winner|alias]]
     pat_alias = re.compile(r'\[\[' + re.escape(loser_stem) + r'\|([^\]]+)\]\]')
     pat_plain = re.compile(r'\[\[' + re.escape(loser_stem) + r'\]\]')
 
@@ -74,12 +74,12 @@ def merge_pair(loser_stem: str, winner_stem: str, stats: dict):
             text = f.read_text(encoding='utf-8')
         except Exception:
             continue
-        # ספור הופעות
+        # count occurrences
         n_alias = len(pat_alias.findall(text))
         n_plain = len(pat_plain.findall(text))
         if n_alias + n_plain == 0:
             continue
-        # החלף
+        # replace
         text = pat_alias.sub(rf'[[{winner_stem}|\1]]', text)
         text = pat_plain.sub(f'[[{winner_stem}]]', text)
         f.write_text(text, encoding='utf-8')
@@ -88,7 +88,7 @@ def merge_pair(loser_stem: str, winner_stem: str, stats: dict):
     if links_updated:
         print(f'  🔗 [{loser_stem}]: עודכנו {links_updated} קישורים ב-{files_updated} קבצים')
 
-    # מחק את הloser
+    # delete the loser
     loser_path.unlink()
     print(f'  🗑️  נמחק: {loser_stem}.md')
 
@@ -112,7 +112,7 @@ def main():
     print(f'✅ סיום:')
     print(f'  • קבצים שמוזגו: {stats["merged"]}/{len(MERGES)}')
     print(f'  • קישורים שעודכנו: {stats["links_updated"]}')
-    # ספירה סופית
+    # final count
     remaining = len([f for f in CONCEPTS.glob('*.md') if not f.stem.startswith('_')])
     print(f'  • מושגים נשארים: {remaining} (היו 70, אמור להיות ~{70-stats["merged"]})')
 

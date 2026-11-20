@@ -1,12 +1,12 @@
 """
 scripts/enhance_brain.py
 ========================
-שדרוג עומק לוולט:
-  Phase 1 (חינם): שרשרת הרצאות (← prev | next →)
-  Phase 2 (חינם): קישורים בין-מושגים (co-occurrence)
-  Phase 3 ($0.03): תוכן עשיר לכל מושג עם Gemini Flash
+Depth upgrade for the vault:
+  Phase 1 (free): lecture chain (← prev | next →)
+  Phase 2 (free): cross-concept links (co-occurrence)
+  Phase 3 ($0.03): rich content for each concept with Gemini Flash
 
-הכל idempotent. בלוקים מסומנים ב-AUTO comments — אפשר להריץ שוב בלי לכפול.
+Everything is idempotent. Blocks are marked with AUTO comments — safe to re-run without duplicating.
 """
 import sys, os, re, json, yaml, time, traceback
 from datetime import datetime
@@ -62,7 +62,7 @@ def lecture_chain():
     for ck, folder in COURSE_FOLDER.items():
         cd = STUDY / folder
         if not cd.exists(): continue
-        # אסוף את כל ההערות עם תאריך בשם, חצה לפי type
+        # collect all notes with a date in the name, split by type
         notes = []
         for f in cd.glob('*.md'):
             if f.stem.startswith('_'): continue
@@ -71,7 +71,7 @@ def lecture_chain():
             fm, _, _ = split_fm(f.read_text(encoding='utf-8'))
             ntype = fm.get('type', 'הרצאה')
             notes.append({'path': f, 'date': m.group(1), 'type': ntype, 'stem': f.stem})
-        # בנה שרשרות נפרדות לפי type (הרצאה / תרגול)
+        # build separate chains by type (lecture / tutorial)
         for ntype in {'הרצאה', 'תרגול'}:
             chain = sorted([n for n in notes if n['type'] == ntype], key=lambda n: n['date'])
             for i, n in enumerate(chain):
@@ -85,7 +85,7 @@ def lecture_chain():
                     full = re.sub(re.escape(NAV_HEAD) + r'.*?' + re.escape(NAV_TAIL),
                                    block, full, flags=re.DOTALL)
                 else:
-                    # הכנס אחרי frontmatter
+                    # insert after the frontmatter
                     fm_match = FM_RE.match(full)
                     if fm_match:
                         full = full[:fm_match.end()] + '\n' + block + '\n\n' + full[fm_match.end():]
@@ -103,7 +103,7 @@ COOCCUR_TAIL = '<!-- AUTO-COOCCUR:END -->'
 
 def concept_cooccurrence():
     log('\n[2/3] 🕸️ מחשב קישורים בין-מושגים מ-co-occurrence...')
-    # אסוף concepts: מכל הרצאה
+    # collect concepts: from each lecture
     concept_to_lectures = defaultdict(list)  # concept_stem → [lecture stems]
     for ck, folder in COURSE_FOLDER.items():
         cd = STUDY / folder
@@ -115,24 +115,24 @@ def concept_cooccurrence():
                 if isinstance(c, str):
                     concept_to_lectures[c.strip()].append(f.stem)
 
-    # מטריצת co-occurrence: לכל זוג מושגים — בכמה הרצאות הם מופיעים יחד
+    # co-occurrence matrix: for each pair of concepts — in how many lectures they appear together
     cooccur = defaultdict(Counter)  # a → Counter({b: count})
     for lec_stem in {l for lecs in concept_to_lectures.values() for l in lecs}:
-        # מצא את כל המושגים בהרצאה הזו
+        # find all the concepts in this lecture
         cs_in_lec = [c for c, lecs in concept_to_lectures.items() if lec_stem in lecs]
         for i, a in enumerate(cs_in_lec):
             for b in cs_in_lec[i+1:]:
                 cooccur[a][b] += 1
                 cooccur[b][a] += 1
 
-    # לכל מושג — הוסף top-5 קשורים בגוף הקובץ
+    # for each concept — add the top-5 related ones in the file body
     n_concepts = 0
     n_links = 0
     for cf in CONCEPTS.glob('*.md'):
         if cf.stem.startswith('_'): continue
         related = cooccur.get(cf.stem, {})
         if not related: continue
-        # סנן: רק כאלה שמופיעים יחד 2+ פעמים, מוגבל ל-7
+        # filter: only those that appear together 2+ times, limited to 7
         top = [(c, n) for c, n in related.most_common(15) if n >= 2][:7]
         if not top: continue
         block_lines = [
@@ -195,20 +195,20 @@ Constraints:
 """
 
 def get_excerpt(lecture_path: Path, concept: str, max_chars: int = 800) -> str:
-    """מחפש קטע בהרצאה שמזכיר את המושג."""
+    """Looks for a passage in the lecture that mentions the concept."""
     try:
         text = lecture_path.read_text(encoding='utf-8')
     except: return ''
     _, _, body = split_fm(text)
-    # חפש את שם המושג (גם בעברית עם hint מ-stem)
-    # פשוט: קח 800 תווים סביב הופעה ראשונה, או את 600 הראשונים
+    # look for the concept name (also in Hebrew, with a hint from the stem)
+    # simple: take 800 characters around the first occurrence, or the first 600
     return body[:max_chars]
 
 def generate_concept_content(concept_stem: str, lecture_paths: list[Path],
                               courses_str: str, client) -> str | None:
-    """קורא ל-Gemini Flash להפיק תוכן עשיר."""
+    """Calls Gemini Flash to produce rich content."""
     excerpts_text = ''
-    for i, lp in enumerate(lecture_paths[:3]):  # עד 3 הרצאות
+    for i, lp in enumerate(lecture_paths[:3]):  # up to 3 lectures
         ex = get_excerpt(lp, concept_stem, 600)
         if ex:
             excerpts_text += f'\n--- מהרצאה {i+1} ({lp.stem}) ---\n{ex}\n'
@@ -250,7 +250,7 @@ def generate_concept_content(concept_stem: str, lecture_paths: list[Path],
 
 def enrich_concept_content(skip_existing: bool = True):
     log('\n[3/3] 📖 מייצר תוכן עשיר למושגים (Gemini Flash)...')
-    # אסוף mapping: concept → [lecture paths]
+    # collect mapping: concept → [lecture paths]
     concept_to_lec = defaultdict(list)
     concept_to_courses = defaultdict(set)
     for ck, folder in COURSE_FOLDER.items():
@@ -264,10 +264,10 @@ def enrich_concept_content(skip_existing: bool = True):
                     concept_to_lec[c.strip()].append(f)
                     concept_to_courses[c.strip()].add(courses_cfg[ck]['name'])
 
-    # רשימת מושגים לעיבוד
+    # list of concepts to process
     concept_files = {f.stem: f for f in CONCEPTS.glob('*.md') if not f.stem.startswith('_')}
 
-    # יוזם Gemini client
+    # initialize the Gemini client
     from generators.summarizer import AISummarizer
     s = AISummarizer()
     client = s.client
@@ -278,7 +278,7 @@ def enrich_concept_content(skip_existing: bool = True):
         if skip_existing and RICH_HEAD in text:
             continue
         if stem not in concept_to_lec:
-            continue  # אין הרצאות שמזכירות
+            continue  # no lectures mention it
         targets.append(stem)
 
     log(f'  🎯 יעדים: {len(targets)} מושגים (מתוך {len(concept_files)})')
@@ -286,7 +286,7 @@ def enrich_concept_content(skip_existing: bool = True):
         log('  (כולם כבר עשירים — הסקריפט idempotent)')
         return
 
-    # רץ במקביל × 4
+    # runs in parallel × 4
     success = 0
     fail = 0
     def worker(stem):

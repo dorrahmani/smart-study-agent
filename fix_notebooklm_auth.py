@@ -1,6 +1,6 @@
 """
-fix_notebooklm_auth.py — כניסה ידנית ל-NotebookLM ושמירת storage_state.json.
-הרץ ב-PowerShell: python fix_notebooklm_auth.py
+fix_notebooklm_auth.py — manual NotebookLM login that saves storage_state.json.
+Run in PowerShell: python fix_notebooklm_auth.py
 """
 import sys, pathlib, os
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -49,7 +49,7 @@ with sync_playwright() as p:
     print("=" * 55)
     input("\n  [לחץ ENTER לאחר שנכנסת ל-NotebookLM] ")
 
-    # שלב קריטי: כפיית קוקיות .google.com (בדיוק כמו notebooklm login)
+    # critical step: force .google.com cookies (exactly like notebooklm login)
     print("\nמרענן קוקיות...")
     try:
         page.goto(ACCOUNTS_URL, wait_until="load", timeout=15000)

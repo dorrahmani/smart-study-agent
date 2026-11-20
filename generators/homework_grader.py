@@ -2,11 +2,11 @@
 
 Takes one or more images (or a multipage PDF) of a solved exercise and returns
 structured Hebrew feedback:
-  • הצהרת הבעיה (מה זוהה)
-  • סקירת הצעדים (✓/✗ לכל אחד)
-  • שגיאות שזוהו עם הסבר *מדוע*
-  • רמז להמשך (לא פתרון מלא, אלא אם user_wants_solution=True)
-  • ציון משוער (0-100)
+  • הצהרת הבעיה (the problem statement, i.e. what was identified)
+  • סקירת הצעדים (step review, ✓/✗ for each)
+  • שגיאות שזוהו (errors identified) with an explanation of *why*
+  • רמז להמשך (a hint going forward; not a full solution, unless user_wants_solution=True)
+  • ציון משוער (estimated grade, 0-100)
 
 Uses gemini-2.5-pro for quality (homework grading is a high-stakes use case).
 """
@@ -83,7 +83,7 @@ def grade_homework(
         course_hint: e.g. 'linear_algebra_2' or 'חדו"א 2' — helps Gemini ground the topic.
         user_caption: free-text from the user's Telegram caption (instructions).
         want_full_solution: if True, also include the full correct solution.
-    """
+"""
     from google import genai
     from google.genai import types as genai_types
 

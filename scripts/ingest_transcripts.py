@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-scripts/ingest_transcripts.py — מכניס את כל תמלולי ה-SRT אל המוח (vault).
+scripts/ingest_transcripts.py — loads all the SRT transcripts into the brain (vault).
 
-- קורא את כל data/panopto/*.srt
-- מסנן איכות (srt_is_good_hebrew — הבאג הקירילי)
-- מסיר כפילויות: גרסה מתוארכת עדיפה על לא-מתוארכת; merged עדיף על חלקיו
-- ממיר SRT לטקסט נקי וכותב md עם frontmatter (yaml.safe_dump!) אל
-  <קורס>/🎙️ תמלולים/ ב-vault
-- הרצה חוזרת בטוחה: כותב מחדש רק אם התוכן השתנה
+- reads all data/panopto/*.srt
+- filters by quality (srt_is_good_hebrew — the Cyrillic bug)
+- removes duplicates: a dated version is preferred over an undated one; merged is preferred over its parts
+- converts the SRT to clean text and writes an md with frontmatter (yaml.safe_dump!) to
+  <course>/🎙️ תמלולים/ in the vault
+- safe to re-run: rewrites only if the content changed
 """
 import sys, re, io
 sys.path.insert(0, '.')

@@ -1,5 +1,5 @@
 """
-Moodle Collector - מוריד קבצי PDF ומצגות מ-Moodle
+Moodle Collector - downloads PDF files and slides from Moodle
 """
 
 import os
@@ -311,7 +311,7 @@ class MoodleCollector:
             return []
 
     def collect_wikidot(self, course_key: str) -> List[Dict]:
-        """Collects lecture and recitation PDFs from wikidot (for מדמ"ח)"""
+        """Collects lecture and recitation PDFs from wikidot (for the CS course)"""
         course = self.config['courses'][course_key]
         wikidot_cfg = course['sources'].get('wikidot', {})
 
@@ -393,7 +393,7 @@ class MoodleCollector:
                     'downloaded_at': datetime.now().isoformat()
                 })
 
-        # Static PDF (e.g. חדו"א notes)
+        # Static PDF (e.g. calculus notes)
         static_pdf = course['sources'].get('static_pdf')
         if static_pdf and Path(static_pdf).exists():
             results.append({

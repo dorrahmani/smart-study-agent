@@ -1,6 +1,6 @@
 """
-Panopto Collector - מוריד תמלולים מ-Panopto של TAU
-גישה: Playwright לlogin (SAML/SSO) + requests עם cookies לשאר
+Panopto Collector - downloads transcripts from TAU's Panopto
+Approach: Playwright for login (SAML/SSO) + requests with cookies for the rest
 """
 
 import os
@@ -22,7 +22,7 @@ import yaml
 from datetime import datetime, timedelta, timezone
 
 
-# חייב להתאים ל-_classify_item_type ב-pipelines/sync_all.py
+# Must match _classify_item_type in pipelines/sync_all.py
 TUTORIAL_TITLE_KW = ('תרגול', 'tut', 'tirgul', 'recitation', 'תרגיל')
 
 
@@ -40,12 +40,12 @@ class PanoptoCollector:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'Mozilla/5.0'})
-        self._current_course = None  # לתיוג התראות (pipeline_warn)
+        self._current_course = None  # for tagging alerts (pipeline_warn)
 
     # ─────────────────────────── login ───────────────────────────
 
     def login(self):
-        """התחברות ל-Panopto דרך TAU SSO - Playwright לSSO, cookies לrequests"""
+        """Logs in to Panopto via TAU SSO - Playwright for SSO, cookies for requests"""
         print("מתחבר ל-Panopto...")
 
         from playwright.sync_api import sync_playwright
@@ -55,15 +55,15 @@ class PanoptoCollector:
             ctx = browser.new_context()
             page = ctx.new_page()
 
-            # שלב 1: לך לדף הלוגין של Panopto
+            # Step 1: go to Panopto's login page
             page.goto(f"{self.BASE_URL}/Panopto/Pages/Auth/Login.aspx")
             page.wait_for_load_state('networkidle')
 
-            # שלב 2: לחץ על כפתור SSO (Sign in)
+            # Step 2: click the SSO button (Sign in)
             page.click('#PageContentPlaceholder_loginControl_externalLoginButton')
             page.wait_for_load_state('networkidle')
 
-            # שלב 3: מלא פרטי ההתחברות של TAU
+            # Step 3: fill in the TAU login details
             if 'nidp.tau.ac.il' in page.url or 'tau.ac.il' in page.url:
                 page.locator('#Ecom_User_ID').fill(self.username or '')
                 if self.tau_id:
@@ -77,7 +77,7 @@ class PanoptoCollector:
                 page.wait_for_timeout(8000)
                 page.wait_for_load_state('networkidle')
 
-            # שלב 4: בדוק שהתחברנו ל-Panopto
+            # Step 4: verify we logged in to Panopto
             page.goto(f"{self.BASE_URL}/Panopto/Pages/Home.aspx")
             page.wait_for_load_state('networkidle')
 
@@ -85,7 +85,7 @@ class PanoptoCollector:
                 browser.close()
                 raise Exception("ההתחברות נכשלה - בדוק TAU_USERNAME ו-TAU_PASSWORD")
 
-            # שלב 5: העבר cookies ל-requests session
+            # Step 5: pass the cookies to the requests session
             for cookie in ctx.cookies():
                 self.session.cookies.set(
                     cookie['name'],
@@ -102,10 +102,10 @@ class PanoptoCollector:
     @staticmethod
     def parse_panopto_date(raw: str) -> Optional[datetime]:
         """
-        מפרסר תאריך Panopto — תומך בשני פורמטים:
+        Parses a Panopto date — supports two formats:
           /Date(1776236400000)/  — .NET JSON timestamp (milliseconds)
           2026-04-14T10:00:00   — ISO 8601
-        """
+"""
         import re as _re
         if not raw:
             return None
@@ -120,13 +120,13 @@ class PanoptoCollector:
     def search_sessions(self, query: str, days_back: int = 2,
                         folder_id: str = None) -> List[Dict]:
         """
-        חיפוש הרצאות לפי שם קורס ו/או folder_id.
-        סינון לפי תאריך נעשה client-side (Panopto מחזיר /Date(ms)/ שלא עובד עם startDate API).
-        """
+        Searches lectures by course name and/or folder_id.
+        Date filtering is done client-side (Panopto returns /Date(ms)/ which doesn't work with the startDate API).
+"""
         payload = {
             "queryParameters": {
                 "query": query,
-                "sortColumn": 1,        # מיון לפי תאריך
+                "sortColumn": 1,        # sort by date
                 "sortAscending": False,
                 "maxResults": 100,
                 "page": 0,
@@ -147,7 +147,7 @@ class PanoptoCollector:
         all_sessions = data.get('d', {}).get('Results', [])
         self._last_unfiltered = all_sessions        # 11/11: older ones tell what an older item of a week was
 
-        # סינון client-side לפי days_back
+        # client-side filtering by days_back
         cutoff = datetime.utcnow() - timedelta(days=days_back)
         filtered = []
         for s in all_sessions:
@@ -160,44 +160,44 @@ class PanoptoCollector:
     @staticmethod
     def _clean_title(raw: str) -> str:
         """
-        מנקה כותרת Panopto:
-        - מסיר HTML tags
-        - מסיר קוד קורס בהתחלה (e.g. "1011210304 - Name" → "Name")
-        - מסיר קוד קורס מוטבע + כל מה שאחריו
+        Cleans a Panopto title:
+        - removes HTML tags
+        - removes a leading course code (e.g. "1011210304 - Name" → "Name")
+        - removes an embedded course code + everything after it
           (e.g. "Hebrew Title1011210304 - English Title" → "Hebrew Title")
-        """
+"""
         import re as _re
         title = _re.sub(r'<[^>]+>', '', raw).strip()
-        # הסר קוד קורס בהתחלה
+        # Remove the leading course code
         title = _re.sub(r'^\d{7,10}\s*-\s*', '', title).strip()
-        # הסר קוד קורס מוטבע + כל מה שאחריו (e.g. "Title1011210304 - ...")
+        # Remove an embedded course code + everything after it (e.g. "Title1011210304 - ...")
         title = _re.sub(r'\d{7,10}\s*-\s*.+$', '', title).strip()
-        # נקה תווים מיותרים בסוף
+        # Clean up unnecessary trailing characters
         title = title.rstrip(' -').strip()
         return title
 
-    CURRENT_YEAR_MARKERS = ["2025-2", "2026", "2025"]  # סמסטר ב' תשפ"ו
+    CURRENT_YEAR_MARKERS = ["2025-2", "2026", "2025"]  # Semester B 5786
 
     def is_current_semester(self, session: Dict) -> bool:
-        """בודק שהסרטון שייך לסמסטר הנוכחי (לא שנים קודמות)"""
+        """Checks that the video belongs to the current semester (not previous years)"""
         folder = session.get('FolderName', '')
-        # אם יש folder_id - כבר מסוננים לתיקייה הנכונה, לא צריך לסנן
+        # If there is a folder_id — already filtered to the right folder, no need to filter
         if session.get('FolderID'):
             return True
-        # אחרת - בדוק שהשם מכיל מזהה של השנה הנוכחית
+        # Otherwise — check that the name contains an identifier of the current year
         return any(marker in folder for marker in self.CURRENT_YEAR_MARKERS)
 
-    # ── סינון לפי מערכת השעות האישית ────────────────────────────────────
-    # ב-Panopto מוקלטות *כל* הקבוצות של הקורס. `my_sessions` בקונפיג (מיומן
-    # Google של המשתמש) אומר באיזה יום+שעה נמצאת *הקבוצה שלו*, ולכן כל הקלטה
-    # מחוץ לסלוטים האלה היא קבוצה אחרת ונזרקת. עמיד יותר משמות מרצים, ועובד
-    # גם בשבוע הראשון של קורס חדש (אין היסטוריה להסתמך עליה).
+    # ── Filtering by the personal timetable ────────────────────────────────
+    # Panopto records *all* the groups of the course. `my_sessions` in the config (from the user's
+    # Google calendar) says on which day+time *his group* meets, so any recording
+    # outside those slots is another group and gets dropped. More robust than lecturer names, and works
+    # even in the first week of a new course (no history to rely on).
     _DAY_TO_PYWD = {'sun': 6, 'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3,
                     'fri': 4, 'sat': 5}
 
     @staticmethod
     def _to_israel_local(dt):
-        """parse_panopto_date מחזיר UTC; ממיר לשעון קיר ישראלי."""
+        """parse_panopto_date returns UTC; converts to Israeli wall-clock time."""
         from datetime import timezone, timedelta
         try:
             from zoneinfo import ZoneInfo
@@ -205,10 +205,10 @@ class PanoptoCollector:
                       .astimezone(ZoneInfo('Asia/Jerusalem'))
                       .replace(tzinfo=None))
         except Exception as e:
-            # קירוב רק אם אין tzdata. שעון קיץ בישראל: יום שישי שלפני
-            # יום ראשון האחרון של מרץ → יום ראשון האחרון של אוקטובר.
-            # (חשוב: 2026-10-25 נופל *בתוך* הסמסטר — קירוב "כל אוקטובר=+3"
-            #  היה מזיז הרצאות של סוף אוקטובר בשעה ומפיל אותן מהסינון.)
+            # Approximation only if there is no tzdata. Israeli daylight saving: the Friday before
+            # the last Sunday of March → the last Sunday of October.
+            # (Important: 2026-10-25 falls *inside* the semester — an "all October=+3" approximation
+            #  would shift late-October lectures by an hour and drop them from the filter.)
             print(f"⚠️  tzdata לא זמין ({e}) — קירוב שעון ישראל", flush=True)
             import calendar as _cal
             last_sun = max(d for d in range(25, 32)
@@ -291,7 +291,7 @@ class PanoptoCollector:
                            tolerance_min: int = 45, now_local: datetime | None = None,
                            existing: List[Dict] | None = None, history: List[Dict] | None = None,
                            foreign_hosts: List[str] | None = None) -> List[Dict]:
-        """משאיר רק הקלטות שנופלות בסלוטים של המשתמש (יום בשבוע + שעת התחלה).
+        """Keeps only the recordings that fall in the user's slots (day of week + start time).
         11/11 (combined folders — every group of the course in one folder): a slot matches within min(45, half its
         length) of its start; a recording much shorter than the slot (a 3-min false start, the lecturer's 10-min
         upload) is not the class itself; several recordings in one slot → one: the one naming his tutor, else the
@@ -316,7 +316,7 @@ class PanoptoCollector:
             return out
         slots = [s for s in (my_sessions or []) if s.get('type') == session_type]
         if not slots:
-            return sessions  # אין שיבוץ מוגדר — לא מסננים
+            return sessions  # no timetable assignment defined — no filtering
         import re as _re
         now_wall = now_local or self._to_israel_local(datetime.utcnow())
         weekly = [s for s in slots if not s.get('date')]
@@ -342,8 +342,8 @@ class PanoptoCollector:
                   flush=True)
         p['undated'] = [s for s in p['undated'] if id(s) in window]
         for s in p['undated']:
-            # fail-open: בלי תאריך אי אפשר לשפוט — עדיף לשמור ולהתריע
-            # מאשר להפיל הרצאה אמיתית בשקט (אין keywords כגיבוי כאן).
+            # fail-open: without a date we can't judge — better to keep it and warn
+            # than to silently drop a real lecture (no keywords as a fallback here).
             print(f"⚠️  StartTime לא נפרס — שומר ליתר ביטחון: "
                   f"{s.get('SessionName', '?')[:60]}", flush=True)
         for r in p['recs'].values():
@@ -525,17 +525,17 @@ class PanoptoCollector:
                         exclude_keywords: List[str] = None,
                         fallback_keywords: List[str] = None) -> List[Dict]:
         """
-        מסנן הרצאות לפי keywords (שם מרצה / קבוצה).
-        - מסנן קודם לפי סמסטר נוכחי
-        - אם אין התאמה לקבוצה הרגילה - מחזיר fallback
-        """
+        Filters lectures by keywords (lecturer name / group).
+        - first filters by the current semester
+        - if nothing matches the regular group - returns a fallback
+"""
         import re
 
-        # סנן קודם לסמסטר הנוכחי בלבד
+        # First filter to the current semester only
         sessions = [s for s in sessions if self.is_current_semester(s)]
 
         if not keywords:
-            # אין מילות מפתח (למשל כשמסננים לפי מערכת שעות) — עדיין להחיל exclude
+            # No keywords (e.g. when filtering by timetable) — still apply exclude
             if exclude_keywords:
                 sessions = [
                     s for s in sessions
@@ -569,7 +569,7 @@ class PanoptoCollector:
         if matched:
             return matched
 
-        # אם אין הרצאה של הקבוצה שלנו - קח חלופה
+        # If there is no lecture of our group - take an alternative
         if fallback and fallback_keywords:
             candidates = [
                 s for s in fallback
@@ -578,7 +578,7 @@ class PanoptoCollector:
             ]
             if candidates:
                 print("⚠️  הקבוצה הרגילה לא הועלתה - משתמש בהרצאה חלופית")
-                return candidates  # dedup_by_week יגביל לאחר מכן
+                return candidates  # dedup_by_week will limit afterwards
 
         return []
 
@@ -590,9 +590,9 @@ class PanoptoCollector:
     def _safe_stem(self, title: str, course_key: str,
                    date_str: Optional[str] = None) -> str:
         """
-        בונה stem בטוח לקבצים. כולל תאריך (אם נתון) כדי למנוע התנגשויות
-        בין הרצאות שונות עם אותו title (למשל "מרצה_א מרצה_ע" בכל שבוע).
-        """
+        Builds a safe stem for files. Includes the date (if given) to prevent collisions
+        between different lectures with the same title (e.g. "מרצה_א מרצה_ע" every week).
+"""
         safe_title = "".join(
             c for c in title if c.isalnum() or c in (' ', '-', '_')
         ).strip()
@@ -603,7 +603,7 @@ class PanoptoCollector:
     def download_srt(self, video_id: str, title: str,
                      course_key: str,
                      date_str: Optional[str] = None) -> Optional[str]:
-        """הורדת קובץ SRT ישירות מה-endpoint של Panopto"""
+        """Downloads an SRT file directly from Panopto's endpoint"""
         print(f"📝 מוריד כתוביות: {title}")
 
         r = self.session.get(
@@ -615,7 +615,7 @@ class PanoptoCollector:
             print(f"⚠️  אין כתוביות עבור: {title}")
             return None
 
-        # בדוק שזה SRT אמיתי (מכיל timestamps)
+        # Check that it's a real SRT (contains timestamps)
         if '-->' not in r.text:
             print(f"⚠️  תוכן לא תקין עבור: {title}")
             return None
@@ -631,13 +631,13 @@ class PanoptoCollector:
 
     def _srt_is_good(self, srt_path: str) -> bool:
         """
-        בדיקת איכות SRT:
-        1. מינימום תוכן (500 תווים)
-        2. אחוז עברית — לפחות 20% מהתווים האלפביתיים הם עבריים
-        3. לא חוזרני מדי (אותו ביטוי >40% מהשורות)
-        4. Gemini relevance check — בדיקה שהתוכן הוא הרצאה אקדמית
-        אם נכשל → `get_transcript` יפנה ל-Whisper אוטומטית.
-        """
+        SRT quality check:
+        1. minimum content (500 characters)
+        2. Hebrew percentage — at least 20% of the alphabetic characters are Hebrew
+        3. not too repetitive (the same phrase >40% of the lines)
+        4. Gemini relevance check — verifies that the content is an academic lecture
+        If it fails → `get_transcript` automatically falls back to Whisper.
+"""
         try:
             import re as _re
             text = Path(srt_path).read_text(encoding='utf-8')
@@ -687,11 +687,11 @@ class PanoptoCollector:
 
     def _claude_transcript_is_relevant(self, transcript_sample: str) -> bool:
         """
-        שולח דגימה מהתמלול ל-Gemini ובודק שני דברים:
-        1. האם הטקסט הגיוני (לא זבל)?
-        2. אם יש בו עברית — האם המילים העבריות הן מילים אמיתיות (לא אותיות אקראיות)?
-        מחזיר False אם התמלול זבל, שפה לא נכונה, עברית שבורה, או לא קשור.
-        """
+        Sends a sample of the transcript to Gemini and checks two things:
+        1. Does the text make sense (not garbage)?
+        2. If it contains Hebrew — are the Hebrew words real words (not random letters)?
+        Returns False if the transcript is garbage, the wrong language, broken Hebrew, or unrelated.
+"""
         try:
             import google.genai as genai
             _gk = os.environ.pop('GOOGLE_API_KEY', None)
@@ -733,9 +733,9 @@ Text sample:
 
     def _get_video_mp4_url(self, video_id: str) -> Optional[str]:
         """
-        מחלץ URL לוידאו מ-Panopto.
-        מנסה קודם MP4 ישיר; אם אין — מחזיר HLS master URL (נתמך ע"י ffmpeg).
-        """
+        Extracts a video URL from Panopto.
+        Tries a direct MP4 first; if none — returns the HLS master URL (supported by ffmpeg).
+"""
         from xml.etree import ElementTree as ET
         import requests as _req
 
@@ -762,7 +762,7 @@ Text sample:
                 elif tag == 'StreamUrl' and not hls_url and text.startswith('http'):
                     hls_url = text  # HLS master playlist URL
 
-            # נסה MP4 ישיר קודם
+            # Try a direct MP4 first
             if session_file_id and stream_file_id:
                 mp4_url = f'https://d2hpwsdp0ihr0w.cloudfront.net/sessions/{session_file_id}/{video_id}-{stream_file_id}.mp4'
                 try:
@@ -773,7 +773,7 @@ Text sample:
                 except Exception:
                     pass
 
-            # Fallback: HLS URL — ffmpeg תומך ב-HLS ישירות
+            # Fallback: HLS URL — ffmpeg supports HLS directly
             if hls_url:
                 try:
                     head = _req.head(hls_url, timeout=10, allow_redirects=True)
@@ -792,15 +792,15 @@ Text sample:
                                  course_key: str,
                                  date_str: Optional[str] = None) -> Optional[str]:
         """
-        מוריד וידאו מ-Panopto ומתמלל עם Whisper.
-        מחזיר נתיב לקובץ SRT שנוצר.
-        """
+        Downloads a video from Panopto and transcribes it with Whisper.
+        Returns the path of the SRT file that was created.
+"""
         from collectors.whisper_transcriber import transcribe_and_save
 
         stem = self._safe_stem(title, course_key, date_str)
         srt_path_check = str(self.output_dir / f"{stem}.srt")
 
-        # אם SRT כבר קיים מ-Whisper — לא להוריד שוב
+        # If an SRT from Whisper already exists — don't download again
         if Path(srt_path_check).exists() and Path(srt_path_check).stat().st_size > 5000:
             print(f"  ✅ SRT קיים מ-Whisper — דולג על הורדה חוזרת")
             return srt_path_check
@@ -839,7 +839,7 @@ Text sample:
                 total_dur = sum(d for _, _, d in segments)
                 print(f"  {len(segments)} segments ({total_dur/60:.0f} דקות)")
 
-                # הורד במקביל עם ThreadPoolExecutor
+                # Download in parallel with ThreadPoolExecutor
                 from concurrent.futures import ThreadPoolExecutor, as_completed
                 import requests as _req
 
@@ -877,7 +877,7 @@ Text sample:
 
                 print(f"\n  הורד: {len(all_bytes)//1024//1024}MB")
 
-                # חלץ audio עם ffmpeg מ-stdin
+                # Extract audio with ffmpeg from stdin
                 cmd = [
                     FFMPEG_PATH, '-y',
                     '-f', 'mp4', '-i', 'pipe:0',
@@ -906,7 +906,7 @@ Text sample:
                 print(f"❌ שגיאה בהורדת HLS: {e}")
                 return None
         else:
-            # MP4 ישיר — הורד ותמלל
+            # Direct MP4 — download and transcribe
             print(f"⬇️  מוריד וידאו: {title} (יכול לקחת מספר דקות)...")
             r = self.session.get(mp4_url, stream=True, timeout=60)
             total = int(r.headers.get('Content-Length', 0))
@@ -970,15 +970,15 @@ Text sample:
         Order (19/11): Panopto's captions (free, when srt_is_good) → the VM's local model (free) → OpenAI (last).
         No captions yet on a fresh recording → None for now (wait_for_captions); a later run checks again.
 
-        date_str נכלל בשם הקובץ כדי למנוע התנגשות בין הרצאות שונות עם אותו title.
-        """
+        date_str is included in the file name to prevent a collision between different lectures with the same title.
+"""
         openai_key = os.getenv('OPENAI_API_KEY', '')
 
-        # 1. נסה SRT מ-Panopto
+        # 1. Try the SRT from Panopto
         srt_path = self.download_srt(video_id, title, course_key, date_str)
 
         if srt_path and self._srt_is_good(srt_path):
-            return srt_path  # SRT טוב — משתמשים בו
+            return srt_path  # Good SRT — use it
 
         if not srt_path and self.wait_for_captions(course_key, kind, recorded_at):
             hrs = (datetime.utcnow() - recorded_at.replace(tzinfo=None)).total_seconds() / 3600
@@ -1019,10 +1019,10 @@ Text sample:
     def download_video(self, video_id: str, title: str, course_key: str,
                        date_str: Optional[str] = None) -> Optional[str]:
         """
-        מחזיר URL/נתיב לוידאו לצורך קריאת לוח (board reading).
-        - אם MP4 ישיר: מוריד לדיסק ומחזיר נתיב
-        - אם HLS: מחזיר את ה-URL ישירות (ffmpeg מסתרם ממנו)
-        """
+        Returns a URL/path to the video for board reading.
+        - if a direct MP4: downloads it to disk and returns the path
+        - if HLS: returns the URL directly (ffmpeg streams from it)
+"""
         url = self._get_video_mp4_url(video_id)
         if not url:
             print(f"❌ לא נמצא URL לוידאו: {title}")
@@ -1033,7 +1033,7 @@ Text sample:
             print(f"📡 וידאו HLS — ffmpeg יקרא ישירות מ-URL")
             return url
 
-        # MP4 ישיר — הורד לדיסק
+        # Direct MP4 — download to disk
         stem = self._safe_stem(title, course_key, date_str)
         mp4_path = str(self.output_dir / f"{stem}_board.mp4")
 
@@ -1060,7 +1060,7 @@ Text sample:
             return None
 
     def get_delivery_info(self, video_id: str) -> Dict:
-        """מקבל מידע על הסרטון (כולל האם יש כתוביות)"""
+        """Gets information about the video (including whether it has captions)"""
         r = self.session.get(
             f"{self.BASE_URL}/Panopto/Pages/Viewer/DeliveryInfo.aspx",
             params={"deliveryId": video_id, "responseType": "json"}
@@ -1072,9 +1072,9 @@ Text sample:
     def collect_course(self, course_key: str,
                        days_back: int = 2) -> List[Dict]:
         """
-        אוסף הרצאות חדשות לקורס.
-        days_back: כמה ימים אחורה לחפש (ברירת מחדל 2 - כי הרצאה מועלית ~24 שעות אחרי)
-        """
+        Collects new lectures for a course.
+        days_back: how many days back to search (default 2 - because a lecture is uploaded ~24 hours later)
+"""
         course = self.config['courses'][course_key]
         self._current_course = course_key
 
@@ -1089,7 +1089,7 @@ Text sample:
         exclude_keywords = panopto_cfg.get('exclude_keywords', [])
         collect_tutorials = panopto_cfg.get('collect_tutorials', False)
 
-        # מקסימום הרצאות/תרגולים שבועי
+        # Maximum lectures/tutorials per week
         weekly = course.get('weekly_schedule', {})
         max_lectures = weekly.get('max_lectures', 99)
         max_tutorials = weekly.get('max_tutorials', 99)
@@ -1111,7 +1111,7 @@ Text sample:
             except Exception as e:
                 print(f"  ⚠️ panopto folders: {e}")
 
-        # מערכת השעות האישית (מהיומן) — לסינון "רק הקבוצה שלי"
+        # The personal timetable (from the calendar) — for filtering "only my group"
         my_sessions = course.get('my_sessions') or []
         try:                                    # the site's current slots win over the planning snapshot (13/10)
             from collectors.panopto_discovery import portal_sessions
@@ -1143,12 +1143,12 @@ Text sample:
 
         def dedup_by_week(sessions: List[Dict], max_count: int) -> List[Dict]:
             """
-            מסיר כפילויות: אם אותו מרצה מעביר כמה פעמים את אותה הרצאה בשבוע,
-            לוקחים רק max_count (הכי חדשות).
-            מכיוון שהתוצאות ממוינות לפי תאריך יורד, פשוט לוקחים את ה-max_count הראשונים.
+            Removes duplicates: if the same lecturer gives the same lecture several times a week,
+            only max_count (the newest) are taken.
+            Since the results are sorted by date descending, just take the first max_count.
             11/11: matched by schedule → already one per week (_week); max_count per WEEK, not per run (the cap of 1
             per run left every other week of the 14-day lookback without his recording).
-            """
+"""
             if any(s.get('_week') for s in sessions):
                 per, out = {}, []
                 for s in sessions:
@@ -1191,7 +1191,7 @@ Text sample:
                 return True
             return False
 
-        # הרצאות
+        # Lectures
         fallback_lecture_kw = panopto_cfg.get('fallback_lecture_keywords', [])
         lectures = self.filter_sessions(
             lecture_sessions, lecture_keywords, exclude_keywords,
@@ -1207,7 +1207,7 @@ Text sample:
             dt = self.parse_panopto_date(s.get('StartTime', ''))
             date_str = dt.strftime('%Y-%m-%d') if dt else ''
 
-            # אם שתי הרצאות באותו שם — הוסף מספר לשנייה
+            # If two lectures have the same name — add a number to the second
             if title in seen_titles:
                 seen_titles[title] += 1
                 title = f"{title} ({seen_titles[title]})"
@@ -1238,8 +1238,8 @@ Text sample:
                 retire_replaced(s, video_id)
             time.sleep(0.5)
 
-        # תרגולים (אם מופעל)
-        # מילות מפתח *או* שיבוץ מהיומן מספיקים כדי לאסוף תרגולים
+        # Tutorials (if enabled)
+        # Keywords *or* a calendar assignment are enough to collect tutorials
         if collect_tutorials and (tutorial_keywords or match_by_schedule):
             tut_folder = tutorial_folder_id or folder_id
             tutorial_sessions = self.search_sessions(
@@ -1274,8 +1274,8 @@ Text sample:
                                                and not re.search(r'תרגול|תרגיל|recitation|tirgul', title, re.I)):
                     print(f"⏭️  לא תרגול (הרצאה / כבר נאסף): {title[:60]}")
                     continue
-                # תרגול שנתפס לפי המערכת (בלי מילת מפתח בכותרת) היה מסווג
-                # כהרצאה בשלב הסיכום (sync_all מסווג לפי הכותרת) — מסמנים אותו.
+                # A tutorial picked up by the timetable (no keyword in the title) was classified
+                # as a lecture at the summary stage (sync_all classifies by title) — so we mark it.
                 if not any(kw in title.lower() for kw in TUTORIAL_TITLE_KW):
                     title = f"תרגול - {title}"
                 dt = self.parse_panopto_date(s.get('StartTime', ''))
@@ -1297,7 +1297,7 @@ Text sample:
                     retire_replaced(s, video_id)
                 time.sleep(0.5)
 
-        # שמור metadata
+        # Save metadata
         if results:
             meta_path = self.output_dir / f"{course_key}_metadata.json"
             existing = []
@@ -1305,7 +1305,7 @@ Text sample:
                 with open(meta_path, 'r', encoding='utf-8') as f:
                     existing = json.load(f)
 
-            # הוסף רק חדשים (לפי video_id)
+            # Add only new ones (by video_id)
             existing_ids = {r['video_id'] for r in existing}
             new_results = [r for r in results if r['video_id'] not in existing_ids]
             existing.extend(new_results)
@@ -1356,11 +1356,11 @@ Text sample:
             print(f"  ⚠️ panopto folder discovery: {e}")
 
     def collect_all(self, days_back: int = 2) -> Dict[str, List]:
-        """אוסף את כל הקורסים"""
+        """Collects all the courses"""
         from utils.pipeline_health import pipeline_warn
         self.login()
         all_results = {}
-        # רק קורסי הסמסטר הנוכחי (הישנים נשארים בקונפיג להיסטוריה)
+        # Only the current semester's courses (the old ones stay in the config for history)
         keys = list(self.config['courses'].keys())
         try:
             from config.paths import ACTIVE_COURSES
@@ -1377,7 +1377,7 @@ Text sample:
             try:
                 all_results[course_key] = self.collect_course(course_key, days_back=days_back)
             except Exception as e:
-                # קורס אחד שנופל לא מפיל את השאר — אבל מתריע
+                # One failing course doesn't bring down the rest — but it raises an alert
                 pipeline_warn(f"{course_key}: איסוף Panopto נכשל — {str(e)[:150]}")
                 all_results[course_key] = []
         return all_results

@@ -1,52 +1,52 @@
 # Spaced Repetition (Obsidian)
 
-`Smart Study Agent` מייצר חידונים וכרטיסיות בפורמט שמתאים לפלאגין
-[`obsidian-spaced-repetition`](https://github.com/st3v3nmw/obsidian-spaced-repetition).
-הפלאגין מזהה כרטיסיות בתוך תווי-Obsidian רגילים ומריץ עליהן לוח חזרות
-מבוסס SM-2 (אלגוריתם Anki) — ללא צורך לייצא ל-Anki.
+`Smart Study Agent` produces quizzes and flashcards in a format that suits the
+[`obsidian-spaced-repetition`](https://github.com/st3v3nmw/obsidian-spaced-repetition) plugin.
+The plugin recognizes flashcards inside ordinary Obsidian text and runs a review schedule on them
+based on SM-2 (the Anki algorithm) — with no need to export to Anki.
 
-## התקנה
+## Installation
 
-1. בתוך Obsidian: `Settings` → `Community plugins` → `Browse`.
-2. חפש **Spaced Repetition** (מאת `st3v3nmw`).
-3. `Install` ואז `Enable`.
-4. `Settings` → `Spaced Repetition` — ודא ש-`Tags to review` כולל `#flashcards`
-   (זוהי ברירת המחדל).
+1. Inside Obsidian: `Settings` → `Community plugins` → `Browse`.
+2. Search for **Spaced Repetition** (by `st3v3nmw`).
+3. `Install` and then `Enable`.
+4. `Settings` → `Spaced Repetition` — make sure `Tags to review` includes `#flashcards`
+   (this is the default).
 
-> אין צורך לעשות את זה אוטומטית — הפלאגין מתקין את עצמו פעם אחת ב-vault המקומי.
+> There is no need to do this automatically — the plugin installs itself once in the local vault.
 
-## כיצד לחזור על כרטיסיות
+## How to review flashcards
 
-- `Ctrl+P` (או `Cmd+P` ב-macOS) → `Spaced Repetition: Open Flashcard Review`.
-- הפלאגין יסרוק את כל הכותרות שמכילות `#flashcards` ויפתח חזרה יומית.
-- ספציפית לקורס אחד: בחר `Review flashcards in note` או היכנס לחפיסה
-  `#flashcards/<course_key>` (למשל `#flashcards/linear_algebra_2`).
+- `Ctrl+P` (or `Cmd+P` on macOS) → `Spaced Repetition: Open Flashcard Review`.
+- The plugin scans all the headings that contain `#flashcards` and opens a daily review.
+- For one course specifically: choose `Review flashcards in note` or enter the deck
+  `#flashcards/<course_key>` (for example `#flashcards/linear_algebra_2`).
 
-## פורמט הכרטיסיות שאנחנו פולטים
+## The flashcard format we emit
 
-ב-`exporters/notebooklm_obsidian.py`, כל פתק `quiz` או `flashcard` מקבל:
+In `exporters/notebooklm_obsidian.py`, every `quiz` or `flashcard` note gets:
 
-- `tags: [..., flashcards]` ב-frontmatter — כדי שהפלאגין יסרוק אותו.
-- תג חפיסה לקורס: `#flashcards/<course_key>` בתוך הגוף.
-- כרטיסיות בשני וריאנטים:
+- `tags: [..., flashcards]` in the frontmatter — so that the plugin scans it.
+- A deck tag for the course: `#flashcards/<course_key>` inside the body.
+- Flashcards in two variants:
 
-  **שורה אחת** (קצר):
-
-  ```
-  שאלה::תשובה
-  ```
-
-  **רב-שורות** (ארוך / שאלה אמריקאית):
+  **A single line** (short):
 
   ```
-  שאלה (יכולה להיות על מספר שורות)
+  question::answer
+  ```
+
+  **Multi-line** (long / a multiple-choice question):
+
+  ```
+  question (may span several lines)
   ?
-  תשובה (יכולה לכלול אופציות, הסבר, רשימות)
+  answer (may include options, an explanation, lists)
   ```
 
-הפלאגין מזהה את שניהם אוטומטית — אין צורך בעטיפה נוספת.
+The plugin recognizes both automatically — no additional wrapper is needed.
 
-## אימות מהיר
+## Quick verification
 
-לאחר התקנת הפלאגין, פתח כל פתק חידון ב-`🎓 NotebookLM/<course>/`
-ואמור לראות את שורות ה-`::` הופכות לכרטיסיות לחיצות בעמודה הימנית.
+After installing the plugin, open any quiz note in `🎓 NotebookLM/<course>/`
+and you should see the `::` lines turn into clickable flashcards in the right column.
