@@ -12,13 +12,14 @@ except AttributeError:
     pass
 import io
 import json
+import re
 import time
 import requests
 from pathlib import Path
 
 from typing import List, Dict, Optional
 import yaml
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # חייב להתאים ל-_classify_item_type ב-pipelines/sync_all.py
@@ -928,11 +929,46 @@ Text sample:
 
         return result
 
+    # 19/11 the owner: Panopto's free captions first, as much as possible — saving beats a summary 2 days later. They often
+    # appear hours or days after the recording, so EVERY recording with no captions yet waits up to 48h for them
+    # (each nightly run re-checks it — the collector looks 14 days back); only then the local model, OpenAI last.
+    # One exception: an exam or quiz (בוחן) of that course within 2 days → processed right away.
+    CAPTION_WAIT_HOURS = 48
+    URGENT_EXAM_DAYS = 2
+
+    @staticmethod
+    def _exam_soon(course_key: str, days: int, today=None) -> bool:
+        """An exam / quiz of this course within `days` (the exam detector's sources: Moodle cache + manual list)."""
+        try:
+            from scripts.exam_mode_detector import _find_upcoming_exams
+            today = today or datetime.now().date()
+            for ex in _find_upcoming_exams():
+                if ex.get('course_key') == course_key:
+                    d = datetime.strptime(ex['exam_date'][:10], '%Y-%m-%d').date()
+                    if 0 <= (d - today).days <= days:
+                        return True
+        except Exception as e:
+            print(f"  ⚠️ exam check: {e}")
+        return False
+
+    def wait_for_captions(self, course_key: str, kind: str, recorded_at: Optional[datetime],
+                          now: Optional[datetime] = None) -> bool:
+        """True → leave this recording for a later run: its Panopto captions may still come (free)."""
+        if not recorded_at:
+            return False
+        now = now or datetime.utcnow()
+        if recorded_at.tzinfo is not None:
+            recorded_at = recorded_at.astimezone(timezone.utc).replace(tzinfo=None)
+        if (now - recorded_at).total_seconds() >= self.CAPTION_WAIT_HOURS * 3600:
+            return False
+        return not self._exam_soon(course_key, self.URGENT_EXAM_DAYS)
+
     def get_transcript(self, video_id: str, title: str, course_key: str,
-                       date_str: Optional[str] = None) -> Optional[str]:
+                       date_str: Optional[str] = None, recorded_at: Optional[datetime] = None,
+                       kind: str = 'lecture') -> Optional[str]:
         """
-        מנסה קודם SRT מ-Panopto.
-        אם אין תמלול או שהוא גרוע → מוריד וידאו ומתמלל עם Whisper.
+        Order (19/11): Panopto's captions (free, when srt_is_good) → the VM's local model (free) → OpenAI (last).
+        No captions yet on a fresh recording → None for now (wait_for_captions); a later run checks again.
 
         date_str נכלל בשם הקובץ כדי למנוע התנגשות בין הרצאות שונות עם אותו title.
         """
@@ -943,6 +979,12 @@ Text sample:
 
         if srt_path and self._srt_is_good(srt_path):
             return srt_path  # SRT טוב — משתמשים בו
+
+        if not srt_path and self.wait_for_captions(course_key, kind, recorded_at):
+            hrs = (datetime.utcnow() - recorded_at.replace(tzinfo=None)).total_seconds() / 3600
+            print(f"⏳ אין עדיין כתוביות Panopto ({hrs:.0f} שעות מההקלטה) — מחכים להן עד "
+                  f"{self.CAPTION_WAIT_HOURS} שעות, בודקים שוב בריצה הבאה: {title[:50]}")
+            return None
 
         if srt_path:
             # Quarantine the bad SRT so it won't be reused on next run
@@ -955,7 +997,11 @@ Text sample:
         else:
             print(f"ℹ️  אין SRT — עובר ל-Whisper")
 
-        # 2. Whisper fallback
+        # 2. Transcription. 19/11: on the VM the lecture is transcribed locally first ($0) — no key or budget needed;
+        # transcribe_and_save applies both gates itself before its paid fallback.
+        from collectors import local_asr
+        if local_asr.enabled():
+            return self.download_and_transcribe(video_id, title, course_key, date_str)
         if not openai_key:
             print("⚠️  אין OPENAI_API_KEY — לא ניתן לתמלל עם Whisper. ה-SRT הגרוע הועבר לקובץ .bad")
             return None  # Never return a known-bad SRT
@@ -1170,7 +1216,7 @@ Text sample:
 
             if finished(video_id, title):
                 continue
-            srt_path = self.get_transcript(video_id, title, course_key, date_str)
+            srt_path = self.get_transcript(video_id, title, course_key, date_str, recorded_at=dt, kind='lecture')
             if srt_path:
                 video_path = None
                 if board_reading:
@@ -1237,7 +1283,7 @@ Text sample:
 
                 if finished(video_id, title):
                     continue
-                srt_path = self.get_transcript(video_id, title, course_key, date_str)
+                srt_path = self.get_transcript(video_id, title, course_key, date_str, recorded_at=dt, kind='tutorial')
                 if srt_path:
                     results.append({
                         'course': course_key,

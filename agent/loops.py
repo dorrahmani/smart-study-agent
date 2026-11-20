@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / 'data' / 'loops_state.json'
-SUBMIT_RX = re.compile(r'^\s*(?:כבר\s+)?(?:הגשתי|הגשנו|העליתי|שלחתי)\s+(?:את\s+)?(?:ה)?(?:תרגיל|מטלה|עבודה|ממ"ן|תרגיל בית|ש\.?ב\.?)?\s*(\d{1,2})?'
+SUBMIT_RX = re.compile(r'^\s*(?:כבר\s+)?(?:הגשתי|הגשנו|העליתי|שלחתי)\s+(?:את\s+)?(?:ה)?(?:תרגיל|מטלה|עבודה|ממ"ן|תרגיל בית|ש\.?ב\.?|פרויקט|פרוייקט|בוחן)?\s*(\d{1,2})?'
                        r'|^\s*(?:הגשתי|הגשנו)\s*[.!]*\s*$')
 
 
@@ -63,6 +63,8 @@ def find_item(text: str, now: datetime | None = None, items: list[dict] | None =
     from utils import deadlines as dl
     now = now or datetime.now()
     items = items if items is not None else dl.load_items()
+    if (u := _store_item(text, now)):                     # 19/11 an undated item the words name (a team project) comes first
+        return u
     st = dl.load_state()
     cand = []
     for a in items:
@@ -80,7 +82,29 @@ def find_item(text: str, now: datetime | None = None, items: list[dict] | None =
     except Exception:
         pass
     cand.sort(key=lambda a: dl._due(a))
-    return cand[0] if len(cand) == 1 or (cand and m) else (cand[0] if len(cand) == 1 else None)
+    return cand[0] if len(cand) == 1 or (cand and m) else None
+
+
+def _store_item(text: str, now: datetime) -> dict | None:
+    """19/11 an item with no due date or no Moodle activity (a team project, something a mail named): the obligations
+    store's open item that the words point at ("הגשתי את הפרויקט") — a pseudo item whose key is the store id."""
+    try:
+        from agent import obligations as ob
+        store = ob.load()
+        norm = lambda t: {re.sub(r'^[הובלמש]+(?=[א-ת]{3,})', '', w) for w in re.findall(r'[א-תA-Za-z]{3,}', t or '')}
+        generic = norm('הגשתי הגשנו העליתי שלחתי כבר את מטלה תרגיל בוחן עבודה assignment quiz')
+        words = norm(text) - generic
+        hits = []
+        for r in ob.open_items(store, now):
+            if not r.get('due') and words & (norm(r.get('title')) - generic):
+                hits.append(r)
+        if len(hits) != 1:
+            return None
+        r = hits[0]
+        return {'course_key': r['course'], 'assign_id': r['id'].split(':', 1)[1], 'title': r['title'], 'kind': r['kind'],
+                'due_date': r.get('due') or '', 'url': r.get('url') or ''}
+    except Exception:
+        return None
 
 
 def verify(item: dict, fetch=None, state_path: Path | None = None) -> str:

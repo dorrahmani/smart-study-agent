@@ -558,8 +558,8 @@ SUB_RETRIES = 1             # …and a stuck call is tried once more on the subs
 # went to the paid API at full speed — $1.86 and $0.81 of the two nights' $3.41 / $2.61, for pages nothing waits for.
 # A build pays the API at most API_CAP_USD; past it every call raises 'budget lock …', so the topics stop without
 # counting a failure and the polish / stages / chapters wait for the next night (most nights the subscription is back).
-API_CAP_USD = float(os.environ.get('SSA_SITE_API_CAP', '0.25'))
-_API = {'cap': None, 'spent': 0.0}
+API_CAP_USD = float(os.environ.get('SSA_SITE_API_CAP', '0.10'))     # 19/11 0.25 → 0.10: The owner's $15-20 a month
+_API = {'cap': None, 'spent': 0.0, 'flight': 0.0}
 _API_LOCK = threading.Lock()
 
 
@@ -582,10 +582,18 @@ def _ask_gemini(prompt: str, as_json: bool = True, op: str = 'site.chapters', ma
     from utils.budget import budget_lock_reason
     if budget_lock_reason():
         raise RuntimeError('budget lock')
+    # 18/11 the cap held only against calls that had come back: six pages in parallel each saw $0 spent, and nights
+    # of a $0.25 cap paid $0.58-1.19. What's in flight now counts as spent until its own row comes back.
+    guess = len(prompt) / 2.2 / 1_000_000 * 1.5 + 0.02     # the prompt in, ~2.5k tokens out (thinking included)
     with _API_LOCK:
-        if _API['cap'] is not None and _API['spent'] >= _API['cap']:
+        if _API['cap'] is not None and _API['spent'] + _API['flight'] >= _API['cap']:
             raise RuntimeError(f"budget lock: the site's API share for this build (${_API['cap']:.2f}) is spent")
-    return _api_call(prompt, as_json, op, max_tokens)
+        _API['flight'] += guess
+    try:
+        return _api_call(prompt, as_json, op, max_tokens)
+    finally:
+        with _API_LOCK:
+            _API['flight'] = max(0.0, _API['flight'] - guess)
 
 
 def _api_call(prompt: str, as_json: bool, op: str, max_tokens: int) -> str:
@@ -1643,6 +1651,10 @@ def build(out: Path | None = None, courses: list[str] | None = None, now: dateti
     chosen course alone and the others disappeared from it. api_usd: what this build may pay the API when the
     subscription can't answer (None = no cap)."""
     from config.paths import ACTIVE_COURSES
+    from utils.budget import ahead_of_pace
+    if api_usd and ahead_of_pace():         # 18/11 the month is heading past its cap: the pages wait for the subscription
+        print('  💸 site: this month is ahead of its budget pace, no paid API for the site tonight')
+        api_usd = 0.0
     api_cap(api_usd)
     out = out or OUT
     tmp = out.with_name(out.name + '.tmp')

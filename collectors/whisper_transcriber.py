@@ -255,7 +255,24 @@ def transcribe_and_save(video_path: str, output_srt_path: str,
                     out.write_text(text, encoding='utf-8')
                 print(f'♻️  תמלול כבר שולם — לא מתמללים שוב: {out.name}')
                 return output_srt_path
-    transcript = transcribe_video(video_path, language=language)
+    # 19/11: the VM's own CPU first ($0, faster-whisper + ivrit-ai, nice 19); the paid API only when that fails,
+    # times out or its transcript fails the checks — and the paid fallback still obeys the budget lock.
+    transcript = None
+    try:
+        from collectors import local_asr
+        transcript = local_asr.transcribe(video_path)
+    except Exception as e:
+        print(f'  ⚠️ local ASR: {e!r}'[:200])
+    if not transcript:
+        from utils.budget import budget_lock_reason
+        lock = budget_lock_reason()
+        if lock:
+            print(f'⛔ תמלול בתשלום נחסם — נעילת תקציב ({lock})')
+            return None
+        if not os.getenv('OPENAI_API_KEY'):
+            print('⚠️  אין OPENAI_API_KEY — אין תמלול בתשלום')
+            return None
+        transcript = transcribe_video(video_path, language=language)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(output_srt_path, 'w', encoding='utf-8') as f:

@@ -160,7 +160,8 @@ def sessions_today(today: date | None = None) -> list[dict]:
     return _site_rooms(_drop_cancelled(out, today), today)
 
 
-def _drop_cancelled(items: list[dict], today: date, events: list[dict] | None = None) -> list[dict]:
+def _drop_cancelled(items: list[dict], today: date, events: list[dict] | None = None,
+                    overrides: Path | None = None) -> list[dict]:
     """20/10: tutorials marked "❌ בוטל — …" in the studies calendar still got a primer. A session whose calendar
     lesson at the same start time is cancelled is dropped (best-effort: no calendar → unchanged)."""
     if events is None:
@@ -172,7 +173,15 @@ def _drop_cancelled(items: list[dict], today: date, events: list[dict] | None = 
             events = []
     gone = {((e.get('start') or {}).get('dateTime') or '')[11:16] for e in events
             if (e.get('summary') or '').lstrip().startswith('❌')}
-    return [s for s in items if s['start'][:5].zfill(5) not in gone]
+    def off(s: dict) -> bool:                           # 16/11 cancelled in Moodle, calendar not changed: agent/schedule
+        try:
+            from agent import schedule
+            o = schedule.find(today, '', s['start'][:5].zfill(5), s['course'],
+                              'lecture' if s.get('type') == 'lecture' else 'tutorial', path=overrides)
+            return bool(o and o.get('status') == 'cancelled')
+        except Exception:
+            return False
+    return [s for s in items if s['start'][:5].zfill(5) not in gone and not off(s)]
 
 
 def _site_rooms(items: list[dict], today: date) -> list[dict]:

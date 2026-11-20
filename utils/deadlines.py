@@ -53,6 +53,9 @@ def _due(a: dict) -> datetime | None:
 
 
 LECTURER = ROOT / 'data' / 'assignments' / 'lecturer.json'      # exercises posted on a lecturer's own site (19/10)
+ANNOUNCED = ROOT / 'data' / 'assignments' / 'announced.json'    # 19/11 an assignment / quiz a mail or Moodle post named
+                                                                # (agent/obligation_ingest) before the Moodle scrape saw it
+MANUAL = ROOT / 'data' / 'assignments' / 'manual.json'          # deadlines the owner stated himself (20/11)
 
 
 def _ex_num(a: dict) -> str:
@@ -60,7 +63,18 @@ def _ex_num(a: dict) -> str:
     return m.group(1) if m else ''
 
 
-def load_items(cache: Path | None = None, lecturer: Path | None = None) -> list[dict]:
+def manual_path(cache: Path | None = None) -> Path:
+    """data/assignments/manual.json — beside the cache (a test's tmp cache → its own manual file)."""
+    return Path(cache or CACHE).with_name('manual.json')
+
+
+def num_key(a: dict) -> tuple:
+    """(course, kind, numbers in the title): "Assignment 2" (a mail) and "Assignment 2 - Submission" (Moodle) are one item."""
+    kind = 'quiz' if a.get('kind') == 'quiz' else 'assign'
+    return (a.get('course_key'), kind, tuple(sorted(set(re.findall(r'\d+', str(a.get('title', '')))))))
+
+
+def load_items(cache: Path | None = None, lecturer: Path | None = None, announced: Path | None = None) -> list[dict]:
     try:
         items = json.loads((cache or CACHE).read_text(encoding='utf-8')).get('assignments') or []
     except (OSError, ValueError, AttributeError):
@@ -72,6 +86,22 @@ def load_items(cache: Path | None = None, lecturer: Path | None = None) -> list[
         site = []
     moodle_nums = {(a.get('course_key'), _ex_num(a)) for a in items if _ex_num(a)}
     items += [a for a in site if isinstance(a, dict) and (a.get('course_key'), _ex_num(a)) not in moodle_nums]
+    try:                                       # + what a mail / announcement said, unless Moodle already has that one
+        ann = json.loads((announced or (ANNOUNCED if cache is None else Path(cache).with_name('announced.json'))).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        ann = []
+    mo = [a for a in items if a.get('source') != 'announced']
+    have = {num_key(a) for a in mo}
+    same_day = {(a.get('course_key'), num_key(a)[1], str(a.get('due_date'))[:10]) for a in mo}
+    items += [a for a in ann if isinstance(a, dict) and num_key(a) not in have
+              and (a.get('course_key'), num_key(a)[1], str(a.get('due_date'))[:10]) not in same_day]
+    try:                                       # 20/11 + deadlines the owner stated ("תוסיף הגשה…", agent/deadline_ladder),
+        mine = json.loads(manual_path(cache).read_text(encoding='utf-8'))
+    except (OSError, ValueError):              # unless a real source already has that course on that day
+        mine = []
+    days = {(a.get('course_key'), str(a.get('due_date') or '')[:10]) for a in items if a.get('kind') != 'quiz'}
+    items += [a for a in mine if isinstance(a, dict) and not a.get('removed')
+              and (a.get('course_key'), str(a.get('due_date') or '')[:10]) not in days]
     return [a for a in items if _due(a) and _for_me(a)]
 
 

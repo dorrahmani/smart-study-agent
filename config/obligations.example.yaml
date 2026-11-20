@@ -1,0 +1,16 @@
+# config/obligations.example.yaml — copy to config/obligations.yaml (gitignored). Obligations the collectors cannot see
+# on their own; agent/obligations.py reads it with yaml.safe_load. Keys are course ids from config/courses.yaml.
+# Everything below is an invented example.
+example_course_a:
+  homework:
+    submit: false                       # homework exists but is never submitted: don't track it as a deadline
+    title: 'Practice sheets 1-12'
+    note: 'Not for submission (said in the first tutorial). The final exam is the only obligation.'
+example_course_b:
+  declared:
+    - id: team-project
+      title: 'Team project (5% of the grade)'
+      kind: project
+      optional: true
+      how: 'No details or date published yet'
+      note: 'Optional. The final exam (70%) is the only obligation.'

@@ -76,6 +76,11 @@ def main() -> int:
         except Exception as e:
             print(f'  ⚠️ vault export failed: {e}', flush=True)
         rows = to_queue(items)
+        try:                      # 19/11 a post that names an assignment / quiz with a date → tracked at once
+            from agent import obligation_ingest
+            obligation_ingest.from_announcements([it for it in items if it.get('course_key')])
+        except Exception as e:
+            print(f'  ⚠️ obligation ingest: {e!r}'[:200], flush=True)
         print(f'{datetime.now():%F %T} moodle ok: {len(items)} new → queued {len(rows)}', flush=True)
         try:
             print(f'{datetime.now():%F %T} moodle files: {sync_course_files()} new', flush=True)

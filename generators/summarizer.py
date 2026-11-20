@@ -881,6 +881,34 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
             out.append(f"• {kind} {day[8:10]}/{day[5:7]}: " + ' · '.join(heads[:14]))
         return '\n'.join(out)
 
+    SUB_SECONDS = 600
+    SUB_MIN_CHARS = 6000
+
+    @classmethod
+    def _summary_on_subscription(cls, prompt: str) -> str | None:
+        """The summary on the subscription, or None (off, resting, failed, or too short / not a document)."""
+        if os.getenv('SSA_SUMMARY_VIA_SUB', '1') == '0' or not isinstance(prompt, str):
+            return None
+        try:
+            from utils import gemini_sub
+            print(f"🧠 מנסה קודם על מנוי Gemini Pro (agy)...")
+            txt = gemini_sub.ask(prompt, timeout=cls.SUB_SECONDS)
+        except Exception as e:
+            print(f"⚠️ המנוי לא זמין לסיכום: {str(e)[:120]}")
+            return None
+        if not txt:
+            return None
+        if len(txt) < cls.SUB_MIN_CHARS or txt.count('#') < 3:
+            print(f"⚠️ הסיכום מהמנוי קצר מדי ({len(txt)} תווים) — עובר ל-API")
+            return None
+        try:
+            from utils.usage_tracker import log_usage
+            log_usage(service='gemini-subscription', model=f'agy-{gemini_sub.MODEL}', op='summarizer.main.sub',
+                      extra={'chars_in': len(prompt), 'chars_out': len(txt)})
+        except Exception:
+            pass
+        return txt
+
     @staticmethod
     def _was_cut(resp) -> bool:
         try:
@@ -1099,7 +1127,13 @@ $$M = \\begin{{pmatrix}} a & b \\\\ c & d \\end{{pmatrix}}$$
         used_model = self.model
         last_err = None
 
-        for model_idx, _model_name in enumerate(FALLBACK_MODELS):
+        # 19/11 the owner: "$50 זה הרבה". The summary goes to his Gemini Pro subscription first (agy, $0; measured on the
+        # server: a 64K-char transcript → a 32K-char summary in 106s); the paid models below only when it can't answer
+        # or the answer is too short to be the whole document.
+        sub = self._summary_on_subscription(prompt)
+        if sub:
+            summary, used_model = sub, 'agy-subscription'
+        for model_idx, _model_name in enumerate([] if summary else FALLBACK_MODELS):
             for attempt in range(2):   # 2 tries per model
                 try:
                     if model_idx > 0 or attempt > 0:

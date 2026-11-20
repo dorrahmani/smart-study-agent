@@ -29,6 +29,7 @@ No LLM. Exit code is always 0 (this is the alert; the cron wrapper must not doub
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -118,6 +119,12 @@ def alert_text(since: str | None) -> str:
     return head + '\n\n' + (how_to('⚠️ NotebookLM לא עונה — איך לבצע?') or '')
 
 
+def master_token_path() -> Path:
+    home = os.environ.get('NOTEBOOKLM_HOME')
+    base = Path(home) if home else Path.home() / '.notebooklm'
+    return base / 'profiles' / 'default' / 'master_token.json'
+
+
 def _cli(*args: str) -> tuple[int | None, str]:
     try:
         p = subprocess.run([*CLI, *args, '--json'], capture_output=True, text=True, timeout=TIMEOUT, cwd=str(ROOT))
@@ -130,7 +137,19 @@ def check() -> tuple[str, str]:
     """(result, how): 'ok'/'passive' when the read-only probe answers; else one refresh and its classification."""
     if probe_ok(*_cli('auth', 'check', '--test', '--passive')):
         return 'ok', 'passive'
-    return classify(*_cli('auth', 'refresh', '--verify')), 'refresh'
+    result = classify(*_cli('auth', 'refresh', '--verify'))
+    if result != 'ok' and master_token_path().exists():
+        # 17/11: with a master token the server mints its own Google session (no PC involved) — tried before any alert
+        try:
+            subprocess.run([*CLI, 'login', '--master-token-refresh'], capture_output=True, text=True,
+                           timeout=TIMEOUT, cwd=str(ROOT))
+        except subprocess.TimeoutExpired:
+            pass
+        again = classify(*_cli('auth', 'refresh', '--verify'))
+        if again == 'ok':
+            return 'ok', 'master-token'
+        return again, 'master-token-failed'
+    return result, 'refresh'
 
 
 def main(state_path: Path | None = None, run=check, send=None, now: datetime | None = None,
@@ -153,7 +172,7 @@ def main(state_path: Path | None = None, run=check, send=None, now: datetime | N
     if tell == 'dead':
         if send(alert_text(new.get('dead_since')), key=f'nlm-auth:{day}') in ('sent', 'queued', 'dup'):
             new['alerted'] = True
-    elif tell == 'back':
+    elif tell == 'back':        # 16/11 off by default (agent/noise 'system_ok'): utils/notify logs it, "תחזיר … חזר לעבוד" sends
         send('✅ NotebookLM חזר לעבוד בשרת.', key=f'nlm-auth-back:{now.isoformat(timespec="minutes")}')
     new.pop('now', None)
     path.parent.mkdir(parents=True, exist_ok=True)

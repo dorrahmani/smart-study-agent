@@ -48,6 +48,24 @@ def extract_formulas(md: str) -> list[str]:
     return out[:MAX_FORMULAS]
 
 
+def _on_subscription(prompt: str) -> str | None:
+    """The check on the subscription (agy): its JSON, or None → the API. An answer that isn't the expected JSON → None."""
+    import os
+    if os.getenv('SSA_FORMULA_VIA_SUB', '1') == '0':
+        return None
+    try:
+        from utils import gemini_sub
+        out = gemini_sub.ask(prompt, json_mode=True, timeout=300)
+        if out is None or not isinstance(json.loads(out).get('suspicious', []), list):
+            return None
+        from utils.usage_tracker import log_usage
+        log_usage(service='gemini-subscription', model=f'agy-{gemini_sub.MODEL}', op='formula_check.sub',
+                  extra={'chars_in': len(prompt)})
+        return out
+    except Exception:
+        return None
+
+
 def check_formulas(summary: str, transcript: str, board_text: str, client, model: str = MODEL) -> str:
     """Markdown section to append ('' when not applicable or on any error)."""
     formulas = extract_formulas(summary or '')
@@ -57,14 +75,18 @@ def check_formulas(summary: str, transcript: str, board_text: str, client, model
         from google.genai import types as T
         source = (transcript or '')[:120000] + ('\n\n## לוח\n' + board_text[:20000] if board_text else '')
         listing = '\n'.join(f'{i}. ${f}$' for i, f in enumerate(formulas, 1))
-        resp = client.models.generate_content(
-            model=model, contents=PROMPT.format(formulas=listing, source=source),
-            config=T.GenerateContentConfig(max_output_tokens=2000, temperature=0.0,
-                                           response_mime_type='application/json',
-                                           thinking_config=T.ThinkingConfig(thinking_budget=0)))
-        from utils.usage_tracker import log_gemini
-        log_gemini(resp, model, op='formula_check')
-        raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', (resp.text or '').strip())
+        prompt = PROMPT.format(formulas=listing, source=source)
+        raw = _on_subscription(prompt)                   # 19/11 the owner's Gemini Pro subscription first ($0)
+        if raw is None:
+            resp = client.models.generate_content(
+                model=model, contents=prompt,
+                config=T.GenerateContentConfig(max_output_tokens=2000, temperature=0.0,
+                                               response_mime_type='application/json',
+                                               thinking_config=T.ThinkingConfig(thinking_budget=0)))
+            from utils.usage_tracker import log_gemini
+            log_gemini(resp, model, op='formula_check')
+            raw = resp.text or ''
+        raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())
         sus = json.loads(raw).get('suspicious') or []
     except Exception as e:
         print(f"⚠️  בדיקת נוסחאות נכשלה ({e}) — ממשיך בלי")

@@ -401,11 +401,17 @@ def chat(question: str, k: int = 5, model: str = 'gemini-2.5-flash',
                 break
         except Exception as e:
             last_err = e
+            from utils import llm_health
+            # 19/11 emergency mode: 5+15+30 s of sleeps kept the owner waiting 50 s in an outage. In a chat turn, once the
+            # breaker is open (two outage errors) or the turn may not call a model, stop; else at most a short pause.
+            if llm_health.in_turn() and (llm_health.is_open() or (llm_health.TURN.get() or {}).get('block')):
+                break
             if '503' in str(e) and sleep_s:
-                time.sleep(sleep_s)
+                time.sleep(min(sleep_s, 2) if llm_health.in_turn() else sleep_s)
                 continue
             break
-    if not answer:
+    from utils import llm_health
+    if not answer and llm_health.ollama_ok():        # 19/11 only a loaded model, never inside a chat turn with Gemini out
         # Last resort: try local Ollama (qwen2.5:7b) — slow but free, works offline.
         # Better than just dumping raw snippets at the user.
         try:

@@ -256,11 +256,41 @@ def feedback_of(html: str) -> dict:
         u = _h.unescape(u)
         if u not in files:
             files.append(u)
-    text = _html_text(re.sub(r'(?s)<form\b.*?</form>', ' ', m.group(1)))[:INTRO_MAX].strip() if m else ''
+    rows = feedback_table(m.group(1)) if m else {}
+    if rows:                                   # 19/11 the real block is a table; the old dump ran on into the page's scripts
+        text = '\n'.join(f'{k}: {v}' for k, v in rows.items() if v)[:INTRO_MAX]
+    else:
+        text = _html_text(re.sub(r'(?s)<form\b.*?</form>|<script\b.*?</script>', ' ', m.group(1)))[:INTRO_MAX].strip() if m else ''
     if not text and not files:
         return {}
     g = GRADE_RX.search(re.sub(r'\s+', ' ', text))
-    return {'text': text, 'files': files, 'grade': f'{g.group(1)}/{g.group(2)}' if g else None}
+    out = {'text': text, 'files': files, 'grade': f'{g.group(1)}/{g.group(2)}' if g else None}
+    for key, rx in FEEDBACK_FIELDS:
+        v = next((val for k, val in rows.items() if re.search(rx, k, re.I)), '')
+        if v:
+            out[key] = v
+    return out
+
+
+# 19/11 the rows of Moodle's feedback table (th → td), Hebrew and English pages alike
+FEEDBACK_FIELDS = [('grade_text', r'^(?:ציון|ציונים|Grade)$'), ('graded_at', r'נבדק ב|Graded on'),
+                   ('grader', r'נבדק על|Graded by'), ('comments', r'הערות|Feedback comments')]
+
+
+def feedback_table(block: str) -> dict[str, str]:
+    """{row title: its text} of the feedback table ("ציונים" → "עובר", "הערות למשוב" → "מצוין"). Images (emoticons, the
+    grader's avatar initials) are dropped; the grader's name is the cell's text. {} when there is no table."""
+    import html as _h
+    out = {}
+    for th, td in re.findall(r'(?s)<tr[^>]*>\s*<th[^>]*>(.*?)</th>\s*<td[^>]*>(.*?)</td>\s*</tr>', block or ''):
+        td = re.sub(r'(?s)<span[^>]*userinitials[^>]*>.*?</span>|<img[^>]*>', ' ', td)
+        td = re.sub(r'(?i)<br\s*/?>|</p>|</li>|</div>', '\n', td)
+        k = re.sub(r'\s+', ' ', _h.unescape(re.sub(r'<[^>]+>', ' ', th))).strip()
+        v = '\n'.join(re.sub(r'[ \t\xa0]+', ' ', x).strip() for x in _h.unescape(re.sub(r'<[^>]+>', ' ', td)).splitlines())
+        v = re.sub(r'\n{2,}', '\n', v).strip()
+        if k:
+            out[k] = v
+    return out
 
 
 def save_feedback(entry: dict, dest_dir: Path, session=None) -> list[Path]:

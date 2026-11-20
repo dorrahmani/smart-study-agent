@@ -239,13 +239,33 @@ def main(budget_usd: float = 5.0):
             if errs:
                 failed_uploads += errs
                 log(f'  ⚠️ {ck} coursework: {len(errs)} failed — {errs[0][:160]}')
+        # 17/11 every lecture's / tutorial's full transcript + summary under one title per course (generators/nlm_lectures):
+        # the old file-name sources renamed, Cyrillic / duplicate transcripts out, a missing one uploaded — never twice
+        from generators import nlm_lectures
+        for ck in nlm._load_notebooks_index():
+            try:
+                r = nlm_lectures.sync(ck, 'all', ops=nlm_lectures.Ops(agent))
+            except Exception as e:
+                log(f'  ⚠️ {ck} lectures: {e!r}'[:200])
+                continue
+            total_added += len(r['uploaded'])
+            if r['uploaded'] or r['renamed'] or r['removed']:
+                log(f"  + {ck}/all lectures: +{len(r['uploaded'])} new, {len(r['renamed'])} renamed, "
+                    f"{len(r['removed'])} bad/duplicate removed → {r['after']} sources"
+                    + (f" (per week: {len(r['bundled'])})" if r['bundled'] else ''))
+            errs = [x for x in r['errors'] if x != 'no notebook']
+            if errs:
+                failed_uploads += errs
+                log(f'  ⚠️ {ck} lectures: {len(errs)} failed — {errs[0][:160]}')
         log(f'  → NotebookLM: total +{total_added} sources'
             + (f', {len(failed_uploads)} failed (tried again next night)' if failed_uploads else ''))
         if failed_uploads:
             from utils.pipeline_health import pipeline_warn
             login = any(w in str(x) for x in failed_uploads for w in ('Auth', 'login', 'CSRF', 'signed-out'))
-            pipeline_warn('NotebookLM: סיכומים ותמלולים חדשים לא עלו למחברות'
-                          + (' — ההתחברות פגה (notebooklm login)' if login else ''))
+            if login:       # 16/11 19:21 the same expired login nlm_keepalive had already told him about (and fixes)
+                log('  (login expired — notebooklm login: scripts/nlm_keepalive.py owns that alert, not the health report)')
+            else:
+                pipeline_warn('NotebookLM: סיכומים ותמלולים חדשים לא עלו למחברות')
     step('7: NotebookLM sync', _nlm_sync)
 
     # 8: Brain enrichment (concept content + lecture chains + co-occurrence)

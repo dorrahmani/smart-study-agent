@@ -243,6 +243,13 @@ class NotebookLMAgent:
             pdf_paths.extend(moodle_pdfs)
 
         added, skipped = [], []
+        # 17/11 a summary / transcript goes in under generators/nlm_lectures' title ('סיכום — <קורס> שיעור 3 (…)'),
+        # the same one that sync renames the old file-name sources to, so neither uploads it twice
+        titled = {}
+        if summary_pdfs or srt_files:
+            from generators import nlm_lectures
+            titled = nlm_lectures.titles(course_key)
+        summary_names = {os.path.basename(p) for p in summary_pdfs or []}
 
         # --- PDF / binary files ---
         for p in pdf_paths:
@@ -251,27 +258,35 @@ class NotebookLMAgent:
                 skipped.append(name)
                 continue
             try:
-                _run(self._add_file(nb_id, p))
+                title = titled.get(name) if name in summary_names else None
+                _run(self._add_file(nb_id, p, title=title) if title else self._add_file(nb_id, p))
                 added.append(name)
                 already.add(name)
             except Exception as e:
                 skipped.append(f"{name} (ERROR: {e})")
 
-        # --- SRT → plain text ---
+        # --- SRT → clean text (generators/nlm_lectures) ---
         for srt_path in (srt_files or []):
             name = os.path.basename(srt_path)
             # track key: same basename (e.g. "intro_to_cs_Lecture 1b.srt")
             if name in already or not os.path.exists(srt_path):
                 skipped.append(name)
                 continue
+            from utils.srt_quality import srt_is_good_hebrew
+            if not srt_is_good_hebrew(srt_path):            # 17/11 Linear Algebra's Cyrillic captions went in as is
+                skipped.append(f"{name} (NOT HEBREW)")
+                continue
+            if name not in titled:                          # an undated copy of a dated recording
+                skipped.append(f"{name} (DUPLICATE)")
+                continue
             try:
-                plain = self._srt_to_plain_text(srt_path)
+                from generators import nlm_lectures
+                plain = nlm_lectures.clean_text(srt_path)
                 if not plain.strip():
                     skipped.append(f"{name} (EMPTY)")
                     continue
-                # title: שם קובץ ללא סיומת
-                title = os.path.splitext(name)[0]
-                _run(self._add_text(nb_id, title, plain))
+                title = titled[name]
+                _run(self._add_text(nb_id, title, f"{title.replace('תמלול — ', 'תמלול מלא — ', 1)}\n\n{plain}"[:900000]))
                 added.append(name)
                 already.add(name)
             except Exception as e:
@@ -308,8 +323,11 @@ class NotebookLMAgent:
         """Takes these sources out of the notebook, matched by exact title (the file name, with or without its
         extension: that is how sync_sources titles them), and off sources_synced. The files stay where they are.
         apply=False only reports. → {matched, missing, removed}."""
-        nb_id = _load_notebooks_index()[course_key][scope]["notebook_id"]
+        entry = _load_notebooks_index()[course_key][scope]
+        nb_id = entry["notebook_id"]
         by_title = {t: n for n in names for t in (n, os.path.splitext(n)[0])}
+        # 17/11 generators/nlm_lectures renamed summaries / transcripts: their title → file is in the index
+        by_title.update({t: f for t, f in (entry.get("lectures") or {}).items() if isinstance(f, str) and f in names})
         hits = [(s, by_title[s.title]) for s in _run(self._list_sources(nb_id)) if s.title in by_title]
         res = {"matched": sorted({n for _, n in hits}), "removed": [],
                "missing": sorted(set(names) - {n for _, n in hits})}
@@ -331,6 +349,10 @@ class NotebookLMAgent:
     async def _delete_source(self, notebook_id: str, source_id: str):
         async with await self._open_client() as client:
             return await client.sources.delete(notebook_id, source_id)
+
+    async def _rename_source(self, notebook_id: str, source_id: str, title: str):
+        async with await self._open_client() as client:
+            return await client.sources.rename(notebook_id, source_id, title, return_object=False)
 
     async def _add_file(self, notebook_id: str, file_path: str, title: str | None = None):
         async with await self._open_client() as client:
@@ -709,7 +731,8 @@ class NotebookLMAgent:
         for r in refs_raw:
             refs.append({
                 "title": getattr(r, "title", "") or getattr(r, "source_title", ""),
-                "snippet": getattr(r, "snippet", "") or getattr(r, "text", ""),
+                "snippet": getattr(r, "snippet", "") or getattr(r, "text", "") or getattr(r, "cited_text", ""),
+                "source_id": getattr(r, "source_id", "") or "",   # 0.8: a ChatReference has the id, not the title
             })
         return {"answer": answer, "conversation_id": conv, "references": refs}
 

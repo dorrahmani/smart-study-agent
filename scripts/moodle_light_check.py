@@ -11,6 +11,8 @@ Lecture 5 Quiz must reach the owner the same day it opens. 3× a day on weekdays
     3  only for an activity not seen before: one GET of its view page (due / opens / state), at most MAX_NEW a run
     4  new entries merged into data/assignments/_cache.json (the nightly scrape's shape); known entries only get
        Moodle's completion mark; then agent/obligations.refresh() → the store; agent/proactive's next tick says it
+  5  19/11 grades (agent/grades): one GET of each course's grade report (groups without a table: weekly), the
+       assignment page only for a row that changed → data/feedback/, the vault, one message on new feedback
     polite   2 s between requests; any error/timeout stops the run and backs off (1 h, 2 h, 4 h … ≤ 24 h)
     quiet    never alerts (a timeout is the university's, not ours): it logs and the nightly scrape still runs
 Never starts, submits or marks anything (no "Mark as done"). No LLM.
@@ -35,6 +37,7 @@ STATE = ROOT / 'data' / 'moodle_light_check.json'
 CACHE = ROOT / 'data' / 'assignments' / '_cache.json'
 PAUSE = 2.0
 MAX_NEW = 6
+MAX_REFRESH = 6        # 20/11 a known open quiz / assignment: one GET each, so a finished attempt closes it the same day
 BACKOFF_MAX_H = 24
 TIMEOUT = 20
 
@@ -79,6 +82,7 @@ def merge(cache: dict, found: list[tuple[str, str, dict]], details, now: datetim
     items = [a for a in cache.get('assignments') or [] if isinstance(a, dict)]
     have = {key_of(a): a for a in items}
     new = []
+    refreshed = 0
     for ck, name, cm in found:
         if cm.get('module') not in ('assign', 'quiz') or not cm.get('url'):
             continue
@@ -86,6 +90,15 @@ def merge(cache: dict, found: list[tuple[str, str, dict]], details, now: datetim
         if k in have:
             if 'completion' in cm:
                 have[k]['completion'] = cm['completion']
+            e = have[k]
+            if not e.get('submitted') and e.get('url') and refreshed < MAX_REFRESH:
+                refreshed += 1                      # 20/11 Lecture 5 Quiz was finished at 23:01 and still "open" until the nightly scrape
+                d = details(e['url']) or {}
+                if d:
+                    e['submitted'] = bool(d.get('submitted'))
+                    for f in ('quiz_state', 'grade', 'graded', 'cutoff_date', 'due_date'):
+                        if d.get(f) is not None:
+                            e[f] = d[f]
             continue
         if len(new) >= max_new:
             continue                                   # the rest next run (or tonight)
@@ -99,8 +112,27 @@ def merge(cache: dict, found: list[tuple[str, str, dict]], details, now: datetim
     return {**cache, 'assignments': items}, new
 
 
+def _grades_step(session, now: datetime, sleep) -> bool:
+    """19/11 agent/grades: each course's grade report (one GET per course group with a table), an assignment page only
+    for a row that changed → the feedback log, the vault notes, and the one message (agent/proactive says it).
+    → True when Moodle failed (the run backs off like any other error); a bug of ours only logs."""
+    try:
+        from agent import grades
+        if not grades.enabled():
+            return False
+        r = grades.check(session, now, sleep=sleep, timeout=TIMEOUT)
+        print(f"  📝 grades: {r['read']} reports, {r['pages']} pages, new feedback: {r['new'] or 'none'}")
+        return False
+    except (OSError, RuntimeError) as e:
+        print(f'  ⚠️ grades: {e!r}'[:200])
+        return True
+    except Exception as e:
+        print(f'  ⚠️ grades (ours): {e!r}'[:200])
+        return False
+
+
 def run(now: datetime | None = None, session=None, dry: bool = False, sleep=time.sleep, state_path: Path | None = None,
-        cache_path: Path | None = None, courses: list[str] | None = None, refresh=None) -> dict:
+        cache_path: Path | None = None, courses: list[str] | None = None, refresh=None, grades_step=None) -> dict:
     now = now or datetime.now()
     sp, cp = state_path or STATE, cache_path or CACHE
     state = _load(sp, {})
@@ -110,6 +142,7 @@ def run(now: datetime | None = None, session=None, dry: bool = False, sleep=time
     from collectors.announcement_scraper import moodle_ids
     from collectors.moodle_api import course_state, sesskey
     from config.paths import ACTIVE_COURSES, COURSE_NAMES
+    own_session = session is None
     try:
         if session is None:
             from collectors.moodle_assignment_scraper import login_and_get_session
@@ -132,6 +165,9 @@ def run(now: datetime | None = None, session=None, dry: bool = False, sleep=time
                 found += [(ck, COURSE_NAMES.get(ck, ck), cm) for cm in course_state(session, cid, key, strict=True,
                                                                                      timeout=TIMEOUT)]
             except Exception as e:
+                if 'requireloginerror' in str(e):          # 20/11 a group's page the owner can't open (probability 368200202): skip it,
+                    print(f'  ⏭ {ck} {cid}: no access — skipped')   # don't let it block every other course
+                    continue
                 err = f'{ck} {cid}: {e!r}'
                 break
         if err:
@@ -166,6 +202,9 @@ def run(now: datetime | None = None, session=None, dry: bool = False, sleep=time
     for e in new:
         print(f"  🆕 {e['course_key']}: {e['title']} ({e['kind']}) due {e.get('due_date') or '—'}")
     print(f'  read {len(found)} activities, {len(new)} new' + (f' — stopped early, backing off: {err}'[:200] if err else ''))
+    step = grades_step or (_grades_step if own_session else None)   # 19/11 grades + the grader's feedback (a caller's
+    if not err and step and step(session, now, sleep):              # session = a test: only with its own step)
+        _save(sp, fail(_load(sp, {}), now, 'grade report'))
     try:
         (refresh or __import__('agent.obligations', fromlist=['refresh']).refresh)(now)
     except Exception as e:

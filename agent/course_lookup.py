@@ -274,17 +274,85 @@ def _ask(prompt: str) -> dict:
     return json.loads(json_of(resp.text) or '{}')
 
 
+PATHS_LOG = ROOT / 'data' / 'course_answer_paths.jsonl'
+SAVED_PER_LOOKUP = 0.05     # USD a Gemini lookup costs: ~30k tokens of course documents in + the answer, gemini-3.8-flash
+
+
+def log_path(ck: str, path: str, sec: float, saved: float = 0.0, log: Path | None = None, ledger: bool = True) -> None:
+    """Which path answered a course question: notebook (free) / gemini / cache / none. A notebook answer also goes in
+    the cost ledger (data/usage.jsonl) at $0, with what the Gemini lookup would have cost as extra.saved_usd."""
+    if log is None:
+        return
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({'ts': time.strftime('%Y-%m-%dT%H:%M:%S'), 'course': ck, 'path': path, 'sec': round(sec, 1),
+                                'saved_usd': saved}) + '\n')
+    except OSError:
+        pass
+    if saved and ledger:
+        try:
+            from utils.usage_tracker import log_usage
+            log_usage(service='notebooklm', model='notebooklm', op='agent.course_lookup.notebook',
+                      extra={'saved_usd': saved, 'course': ck})
+        except Exception:
+            pass
+    print(f'  📚 course question ({ck}) answered by: {path} in {sec:.1f}s' + (f' (saved ~${saved})' if saved else ''))
+
+
+# 17/11 measured on the server: a NotebookLM answer takes 25–52s (median ~38s), the Gemini lookup 3–5s. The owner chose
+# (17/11) free answers with sources over speed: the notebook gets 45s; a slower one is left behind (not "down") for the
+# Gemini read, so the worst case is ~50s, inside the 90s turn.
+NOTEBOOK_SECONDS = 45
+
+
+def _notebook(question: str, ck: str) -> dict | None:
+    from agent import nlm_ask
+    return nlm_ask.ask_grounded(ck, question, timeout=NOTEBOOK_SECONDS)
+
+
 def find(question: str, ck: str, topic: str = '', ask=None, docs: list | None = None, path: Path | None = None,
-         now: float | None = None) -> str | None:
-    """→ the answer with its source, or None (not in the course's sources)."""
-    from config.paths import COURSE_NAMES
+         now: float | None = None, notebook=None, log: Path | None = None) -> str | None:
+    """→ the answer with its source, or None (not in the course's sources).
+    17/11: the course's NotebookLM notebook first (free; it holds every lecture's transcript and summary): a grounded
+    answer is used with its sources. Not grounded / too slow / down → the paid Gemini read below.
+    notebook=False skips it; a test that hands in `ask` / `docs` (and no notebook) never reaches the real one."""
     m = _mem(path)
     now = now or time.time()
     key = f'{ck}|{_norm(question)}'
     timely = bool(TIME_WORDS.search(question or ''))
+    injected = ask is not None or docs is not None             # a test: nothing real is called or written
+    logp = log if log is not None else (None if injected else PATHS_LOG)
+    ledger = log is None and not injected
     old = (m.get('answers') or {}).get(key)
     if old and not timely and now - old['at'] < ANSWER_DAYS * 86400:
+        log_path(ck, 'cache', 0.0, log=logp, ledger=ledger)
         return old['text']
+    nb = notebook if notebook is not None else (None if injected else _notebook)
+    t0 = time.monotonic()
+    if nb:
+        if nb is _notebook:                                     # 17/11 up to 45s: one short line first (agent/interim)
+            try:
+                from agent import interim, nlm_ask
+                if nlm_ask.has_notebook(ck):
+                    interim.say(interim.COURSE)
+            except Exception as e:
+                print(f'  ⚠️ interim: {e!r}'[:160])
+        try:
+            got = nb(question, ck)
+        except Exception as e:
+            print(f'  ⚠️ notebook first ({ck}): {e!r}'[:200])
+            got = None
+        if got and (got.get('text') or '').strip():
+            log_path(ck, 'notebook', time.monotonic() - t0, SAVED_PER_LOOKUP, log=logp, ledger=ledger)
+            return got['text']
+    text = _gemini_find(question, ck, topic, ask, docs, path, now, m, key, timely)
+    log_path(ck, 'gemini' if text else 'none', time.monotonic() - t0, log=logp, ledger=ledger)
+    return text
+
+
+def _gemini_find(question, ck, topic, ask, docs, path, now, m, key, timely) -> str | None:
+    from config.paths import COURSE_NAMES
     where = m.get('where') or {}
     remembered = list(dict.fromkeys(((where.get(ck) or {}).get(topic) or [])
                                     + [s for t in (where.get(ck) or {}).values() for s in t]))

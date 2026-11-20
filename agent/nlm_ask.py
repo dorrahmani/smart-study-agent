@@ -117,6 +117,89 @@ def _bounded(fn, seconds: float):
     return box.get('value')
 
 
+import re as _re
+
+NOT_FOUND_RX = _re.compile(
+    r'(?:המקורות|במקורות|בחומרים?|בחומרי הקורס|במסמכים)\s+(?:שסופקו\s+|שבידי\s+|שלפניי\s+)?(?:לא|אינם|אין)|'
+    r'לא\s+(?:מצאתי|נמצא(?:ה|ו)?|מופיע(?:ה|ים)?|מוזכר(?:ת|ים)?|מצוין|מצוינ(?:ת|ים)|ציינו)|אינו\s+מופיע|אינה\s+מופיעה|'
+    r'אין\s+(?:בהם|בהן|במקורות|מידע|לי מידע|התייחסות|אזכור)|'
+    r"not\s+(?:mentioned|found|specified|covered)|(?:do|does)\s*(?:n't|\s+not)\s+(?:contain|mention|include|specify)|"
+    r'no\s+information', _re.I)
+GROUNDED_SECONDS = 30
+_TITLES: dict = {}
+TITLES_SECONDS = 3600
+
+
+def source_titles(course: str, agent) -> dict:
+    """{source id: title} of the course's 'all' notebook, kept an hour (an answer cites ids, not names)."""
+    import time as _t
+    at, names = _TITLES.get(course, (0, None))
+    if names is None or _t.time() - at > TITLES_SECONDS:
+        from generators import notebooklm_agent as nlm
+        nb = agent.get_or_create_notebook(course, 'all')
+        names = {s.id: s.title for s in nlm._run(agent._list_sources(nb))}
+        _TITLES[course] = (_t.time(), names)
+    return names
+
+
+def grounded(answer: str, references: list) -> bool:
+    """A notebook answer the bot can stand on: it cites the course's sources and doesn't open with "the sources don't say".
+    (A long answer that says, at its end, that one detail is missing is still an answer.)"""
+    a = (answer or '').strip()
+    if not a or not references:
+        return False
+    head = a[:240]
+    return not (NOT_FOUND_RX.search(head) or (len(a) < 400 and NOT_FOUND_RX.search(a)))
+
+
+def ask_grounded(course: str, question: str, chat: str = 'course_lookup', agent=None,
+                 timeout: float = GROUNDED_SECONDS) -> dict | None:
+    """17/11 the course-question path asks the notebook first (free, from the course's own transcripts and summaries).
+    → {'text': WhatsApp answer with its sources, 'sources': [titles], 'sec'} only when grounded; None = no notebook /
+    too slow / failed / "not in the sources", and the caller goes on to the paid lookup. Too slow is not "down": only
+    a real failure switches NotebookLM off for 6h."""
+    import time as _t
+    if not has_notebook(course):
+        return None
+    start = _t.monotonic()
+    try:
+        from bot import nlm_conversations as conv
+        from generators.notebooklm_agent import NotebookLMAgent
+        agent = agent or NotebookLMAgent()
+        prev = conv.get(chat, course, 'all')
+
+        def run():
+            r = agent.ask(course, 'all', question, prev)
+            if any(x.get('source_id') and not x.get('title') for x in r.get('references') or []):
+                names = source_titles(course, agent)
+                for x in r['references']:
+                    x['title'] = x.get('title') or names.get(x.get('source_id'), '')
+            return r
+        result = _bounded(run, timeout)
+    except TimeoutError as e:
+        print(f'  ⚠️ NotebookLM too slow ({course}): {e}'[:200])
+        return None
+    except Exception as e:
+        print(f'  ⚠️ NotebookLM ask failed ({course}): {e!r}'[:300])
+        _mark(True)
+        return None
+    _mark(False)
+    answer, refs = (result.get('answer') or '').strip(), result.get('references') or []
+    if result.get('conversation_id'):
+        try:
+            conv.update(chat, course, 'all', result['conversation_id'])
+        except Exception:
+            pass
+    if not grounded(answer, refs):
+        return None
+    text = whatsapp_text(answer)
+    if len(text) > 3200:
+        text = text[:3200] + '…'
+    titles = list(dict.fromkeys((r.get('title') or '').strip() for r in refs if r.get('title')))[:3]
+    return {'text': '🎓 ' + text + (f"\n\n📚 מקורות: {', '.join(titles)}" if titles else ''), 'sources': titles,
+            'sec': round(_t.monotonic() - start, 1)}
+
+
 def ask(course: str, question: str, chat: str, agent=None, timeout: int = TIMEOUT, mark_failed: bool = True) -> str | None:
     """→ a WhatsApp-ready answer, or None (no notebook / failed / too slow). A caller with a short timeout passes
     mark_failed=False: its "too slow" isn't "NotebookLM is down", which would switch it off for everyone for 6h."""

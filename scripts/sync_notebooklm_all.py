@@ -86,6 +86,17 @@ def main():
                 print(f'    ❌ נכשל: {e}')
                 traceback.print_exc()
 
+    # 17/11 one title per lecture's transcript + summary, Cyrillic / duplicate transcripts out (generators/nlm_lectures)
+    from generators import nlm_lectures
+    for ck in course_keys:
+        try:
+            r = nlm_lectures.sync(ck, 'all', ops=nlm_lectures.Ops(agent))
+            total_added += len(r['uploaded'])
+            print(f"  🎙️ {ck}: +{len(r['uploaded'])} new, {len(r['renamed'])} renamed, {len(r['removed'])} removed, "
+                  f"{r['after']} sources" + (f" ⚠️ {r['errors'][:2]}" if r['errors'] else ''), flush=True)
+        except Exception as e:
+            print(f'    ❌ {ck} lectures: {e}')
+
     print(f'\n══════ סיכום ══════')
     print(f'✅ סה"כ הועלה: {total_added}')
     print(f'⏭️  סה"כ דולג: {total_skipped}')

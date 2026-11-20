@@ -268,6 +268,10 @@ def gate(mails: list[dict], triager, source: str = 'mail') -> list[dict]:
                 continue
             rel = 'unsure' if model in ('no', 'unsure') else 'yes'
         r = dict(r)
+        if ck:                                                 # 16/11 agent/schedule: which course, from which day
+            r['course_key'], r['ref'] = ck, ref.isoformat() if ref else ''
+            if rel == 'yes' and v.get('change'):
+                r['rule_change'] = said(v['change'], 300)
         if rel == 'unsure':
             r['relevance'] = 'unsure'
             r['my_slot'] = v.get('slot') or (ur.my_slot(ck, v.get('kinds')) if ck else '')
@@ -333,6 +337,12 @@ def check(service=None, client=None, fetcher=None, triager=None) -> list[dict]:
         with open(QUEUE, 'a', encoding='utf-8') as f:
             for r in out:
                 f.write(json.dumps({**r, 'queued': st['last_ok']}, ensure_ascii=False) + '\n')
+        try:                      # 19/11 "Assignment #2 … due 06.12" → tracked within this 15-minute run, not at the next scrape
+            from agent import obligation_ingest
+            ids = {r.get('id') for r in out}
+            obligation_ingest.from_mails([m for m in new if m['id'] in ids])
+        except Exception as e:
+            print(f'  ⚠️ obligation ingest: {e!r}'[:200])
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(st, ensure_ascii=False), encoding='utf-8')
     try:

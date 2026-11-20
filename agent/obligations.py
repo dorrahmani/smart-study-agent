@@ -93,13 +93,13 @@ def collect(cache: Path | None = None, lecturer: Path | None = None, dl_state: d
     except (OSError, ValueError, AttributeError):
         raw = []
     raw = [a for a in raw if isinstance(a, dict)]
-    site = [a for a in dl.load_items(cache, lecturer) if a.get('source') == 'lecturer_site']
+    site = [a for a in dl.load_items(cache, lecturer) if a.get('source') in ('lecturer_site', 'announced', 'manual')]   # 20/11 + stated
     st = dl.load_state() if dl_state is None else dl_state
     courses = _active() if courses is None else courses
     out, seen = [], set()
     for a in raw + site:
         kind = a.get('kind') or 'assign'
-        if courses and a.get('course_key') not in courses:
+        if courses and a.get('course_key') not in courses and a.get('source') != 'manual':   # a work course is his too
             continue
         if kind not in ('assign', 'quiz') and not (kind == 'resource' and a.get('due_date')):
             continue
@@ -124,7 +124,39 @@ def collect(cache: Path | None = None, lecturer: Path | None = None, dl_state: d
                     'url': a.get('url') or '', 'due': due, 'cutoff': a.get('cutoff_date') or '',
                     'opens': a.get('start_date') or '', 'state': state, 'grade': a.get('grade') or '',
                     'manual': bool((st.get(oid) or {}).get('manual_done')) and not a.get('submitted'),
-                    'due_est': est, 'unmarked': state == 'done' and a.get('completion') == 0})
+                    'due_est': est, 'unmarked': state == 'done' and a.get('completion') == 0,
+                    'how': a.get('how') or '', 'unverified': bool(a.get('unverified'))})
+    for d in declared_items(st, courses):
+        if d['id'] not in seen:
+            seen.add(d['id'])
+            out.append(d)
+    return out
+
+
+def config() -> dict:
+    """config/obligations.yaml: what no collector can see (declared items, a course whose homework isn't submitted)."""
+    try:
+        import yaml
+        d = yaml.safe_load((ROOT / 'config' / 'obligations.yaml').read_text(encoding='utf-8'))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def declared_items(st: dict, courses: list[str] | None = None, cfg: dict | None = None) -> list[dict]:
+    """Items the syllabus / course page declares that have no Moodle activity (a team project ...), as store items. Their
+    state follows ✅ הגשתי / עשיתי like any other (utils/deadlines' manual mark)."""
+    out = []
+    for ck, c in (config() if cfg is None else cfg).items():
+        if courses and ck not in courses:
+            continue
+        for d in (c or {}).get('declared') or []:
+            oid = f"{ck}:decl-{d.get('id')}"
+            out.append({'id': oid, 'kind': d.get('kind') or 'assign', 'course': ck, 'title': d.get('title', ''), 'url': '',
+                        'due': d.get('due') or '', 'cutoff': '', 'opens': '',
+                        'state': 'done' if (st.get(oid) or {}).get('manual_done') else 'open', 'grade': '',
+                        'manual': bool((st.get(oid) or {}).get('manual_done')), 'due_est': False, 'unmarked': False,
+                        'how': d.get('how') or '', 'optional': bool(d.get('optional')), 'unverified': False})
     return out
 
 
@@ -175,6 +207,19 @@ def closed_in_words(rec: dict, closed: list[dict]) -> dict | None:
     return None
 
 
+def _twin(have: dict, it: dict) -> dict | None:
+    """A record that came from a mail / post (id 'ann-…') for the same course + kind + number as this Moodle item."""
+    if ':ann-' in it['id']:
+        return None
+    from utils.deadlines import num_key
+    k = num_key({'course_key': it['course'], 'kind': it['kind'], 'title': it['title']})
+    for oid, r in have.items():
+        if ':ann-' in oid and not r.get('merged_into') and num_key({'course_key': r['course'], 'kind': r['kind'],
+                                                                       'title': r['title']}) == k and k[2]:
+            return r
+    return None
+
+
 def sync(items: list[dict], store: dict, now: datetime, closed: list[dict] | None = None) -> bool:
     """Merge what the sources say now into the store. → changed. The first sync ever announces nothing (no burst of
     "new" on deploy); an item already done or already past when first seen is never new either."""
@@ -190,6 +235,14 @@ def sync(items: list[dict], store: dict, now: datetime, closed: list[dict] | Non
             due = _dt(it['due'])
             rec = {**it, 'first_seen': stamp, 'announced': first or it['state'] == 'done' or bool(due and due <= now),
                    'last_nudged': '', 'closed': '', 'closed_by': ''}
+            twin = _twin(have, it)
+            if twin:                    # 19/11 the Moodle item of what a mail announced: same state, one item
+                rec.update({k: twin.get(k) for k in ('announced', 'last_nudged', 'late_said') if twin.get(k)})
+                rec['first_seen'] = twin.get('first_seen') or stamp
+                if twin.get('closed') and twin.get('closed_by') != 'moodle':
+                    rec.update(closed=twin['closed'], closed_by=twin.get('closed_by', ''), closed_why=twin.get('closed_why', ''))
+                twin['gone'] = True
+                twin['merged_into'] = it['id']
             have[it['id']] = rec
             changed = True
         else:
@@ -197,7 +250,7 @@ def sync(items: list[dict], store: dict, now: datetime, closed: list[dict] | Non
                 store.setdefault('news', []).append({'kind': 'grade', 'key': f"{it['course']}:{hw_num(it['title'])}",
                                                      'id': it['id'], 'grade': it['grade'], 'ts': stamp})
             for k in ('kind', 'course', 'title', 'url', 'due', 'cutoff', 'opens', 'state', 'grade', 'manual',
-                      'due_est', 'unmarked'):
+                      'due_est', 'unmarked', 'how', 'optional', 'unverified'):
                 if k in it and rec.get(k) != it[k]:
                     rec[k] = it[k]
                     changed = True
@@ -316,6 +369,7 @@ def refresh(now: datetime | None = None, chat: str | None = None, path: Path | N
     """Read the sources, merge, save (when something changed). Never raises: a broken source = the last store."""
     now = now or datetime.now()
     store = load(path)
+    from_sources = items is None
     try:
         if items is None:
             items = collect()
@@ -341,6 +395,12 @@ def refresh(now: datetime | None = None, chat: str | None = None, path: Path | N
             save(store, path)
     except Exception as e:
         print(f'  ⚠️ obligations: {e!r}'[:200])
+    if write and path is None and from_sources:       # 20/11 his calendar follows the store (agent/deadline_cal)
+        try:
+            from agent import deadline_cal
+            deadline_cal.after_refresh(store, now)
+        except Exception as e:
+            print(f'  ⚠️ obligations → calendar: {e!r}'[:200])
     return store
 
 
@@ -375,7 +435,7 @@ def _when(t: datetime, now: datetime) -> str:
 
 
 def _kind_he(rec: dict) -> str:
-    return {'quiz': 'בוחן', 'exam_reg': 'my.tau'}.get(rec.get('kind'), 'מטלה')
+    return {'quiz': 'בוחן', 'exam_reg': 'my.tau', 'project': 'פרויקט'}.get(rec.get('kind'), 'מטלה')
 
 
 def line(rec: dict, now: datetime, link: bool = True) -> str:
@@ -389,6 +449,14 @@ def line(rec: dict, now: datetime, link: bool = True) -> str:
     else:
         when = f'{verb} {_when(due, now)}' if due else 'בלי תאריך סגירה'
     extra = ' · התחלת ולא סיימת' if rec.get('state') == 'in_progress' else ''
+    if due and status(rec, now) == 'open' and (due.date() - now.date()).days >= 2:
+        extra += f" · עוד {(due.date() - now.date()).days} ימים"
+    if rec.get('how'):
+        extra += f" · איך מגישים: {rec['how']}"
+    if rec.get('unverified'):
+        extra += ' · לפי מייל — לא אומת'
+    if rec.get('optional'):
+        extra += ' · לא חובה'
     star = '⭐ ' if is_priority(rec) else ''
     return f"• {star}{rec.get('title', '')} ({_kind_he(rec)}) — {when}{extra}" + (f"\n  👉 {rec['url']}" if link and rec.get('url') else '')
 
@@ -602,6 +670,8 @@ def answer_text(chat: str = '', course: str | None = None, now: datetime | None 
     store = refresh(now, chat or None) if store is None else store
     said_badge = False
     courses = [course] if course else (_active() or sorted({r['course'] for r in store['items'].values()}))
+    if not course:                                     # 20/11 a deadline he stated outside the courses (a work course)
+        courses += sorted({r['course'] for r in open_items(store, now)} - set(courses))
     keep = (lambda r: r.get('kind') != 'quiz') if only == 'hw' else (lambda r: True)
     others = others and only is None
     out, any_open = [], False
@@ -678,6 +748,56 @@ def answer_text(chat: str = '', course: str | None = None, now: datetime | None 
     return title + '\n\n' + '\n\n'.join(out)
 
 
+def full_text(chat: str = '', course: str | None = None, now: datetime | None = None, store: dict | None = None,
+              cfg: dict | None = None) -> str:
+    """19/11 "מה ההגשות שלי?" / "מה פתוח?": EVERY course of the semester, each with what is open (due date, days left, how to
+    submit when it isn't Moodle), what is already in, and the exam. Read only (the store is refreshed from the files)."""
+    now = now or datetime.now()
+    store = refresh(now, chat or None) if store is None else store
+    cfg = config() if cfg is None else cfg
+    courses = [course] if course else (_active() or sorted({r['course'] for r in store['items'].values()}))
+    today = now.date().isoformat()
+    out = []
+    for ck in courses:
+        recs = [r for r in store['items'].values() if r['course'] == ck and not r.get('gone')]
+        opn = open_items(store, now, ck)
+        missed = [r for r in recs if status(r, now) == 'missed']
+        done = sorted((r for r in recs if status(r, now) == 'closed'),
+                      key=lambda r: (_quiz_order(r.get('title', '')), r.get('due', '')))
+        block = [f'*{_course_name(ck)}*']
+        if opn:
+            block.append('⏳ פתוח:\n' + '\n'.join(line(r, now) for r in opn))
+        else:
+            block.append('⏳ פתוח: אין כלום')
+        if missed:
+            block.append('⚠️ עבר המועד ולא ראיתי הגשה:\n' + '\n'.join(line(r, now, link=False) for r in missed))
+        if done:
+            block.append(f"✅ הוגש / נעשה ({len(done)}): " + ' · '.join(r.get('title', '') for r in done))
+        hw = ((cfg.get(ck) or {}).get('homework') or {})
+        if hw and hw.get('submit') is False:
+            block.append(f"📝 {hw.get('title', 'תרגילי בית')}: {hw.get('note', 'לא להגשה')}")
+        exams = [x for x in (store.get('exams') or {}).get(ck, []) if x['date'] >= today]
+        if exams:
+            for x in exams:
+                left = (datetime.fromisoformat(x['date']).date() - now.date()).days
+                block.append(exam_line(x) + f' · עוד {left} ימים' + (' _(לפי הסדר ביומן)_' if x.get('moed_inferred') else ''))
+        else:
+            block.append('🎯 בחינה סופית: עוד אין מועד ביומן האוניברסיטה (אעדכן ברגע שיופיע)')
+        out.append('\n'.join(block))
+    extra = []
+    if not course:
+        try:
+            from agent import tasks
+            extra += [f"• 📌 {t.get('text', '')}" + (f" (עד {t['due']})" if t.get('due') else '')
+                      for t in (tasks.open_tasks(chat) if chat else [])[:8]]
+        except Exception:
+            pass
+    if extra:
+        out.append('*עוד דברים פתוחים:*\n' + '\n'.join(extra))
+    return (f'📋 *כל ההגשות, הבחנים והמבחנים — נכון להיום ({now:%d/%m})*\n\n' + '\n\n'.join(out) +
+            '\n\n_סגרת משהו? כתוב "הגשתי ..." / "עשיתי ..." — גם למה שמגישים מחוץ למודל._')
+
+
 # ── the nudges (pure: store + now → proactive notes) ───────────────────────
 
 def _offer(rec: dict) -> dict:
@@ -692,6 +812,14 @@ def _close_txt(rec: dict, now: datetime) -> str:
     if due and rec.get('due_est'):
         return f"נסגר בערך ב{_when(due, now)}"
     return f"נסגר {_when(due, now)}" if due else 'אין לו תאריך סגירה'
+
+
+def _grades_on() -> bool:
+    try:
+        from agent import grades
+        return grades.enabled()
+    except Exception:
+        return False
 
 
 def notes(now: datetime, store: dict) -> list[dict]:
@@ -728,7 +856,7 @@ def notes(now: datetime, store: dict) -> list[dict]:
                                         f"({_close_txt(r, now)}).{started}\nהבחנים האלה הם הכי קרובים למבחן שיש. "
                                         f"עשית? לחץ ✅.\n👉 {r['url']}"})
             continue
-        if fresh and not engine:
+        if fresh and not engine and not r.get('optional'):
             batch.append(r)
     if batch and now.hour >= BATCH_FROM:
         one = batch[0] if len(batch) == 1 else None
@@ -738,6 +866,8 @@ def notes(now: datetime, store: dict) -> list[dict]:
                     'text': '🆕 *חדש במודל:*\n' + '\n'.join(f"{line(r, now, link=bool(one))}" for r in batch)
                             + ('' if one else '\n\nהקישורים ב"מה חסר לי".')})
     news = [n for n in store.get('news') or [] if not n.get('said')]
+    if _grades_on():                       # 19/11 agent/grades says a grade / feedback once, with what was written
+        news = [n for n in news if n.get('kind') not in ('grade', 'feedback')]
     if news:
         def news_line(n):
             ck, _, num = n['key'].partition(':')
@@ -754,7 +884,8 @@ def notes(now: datetime, store: dict) -> list[dict]:
                     'offer': {'title': 'עדכונים במודל'}, 'text': '\n'.join(news_line(n) for n in news[:6])})
     wd, h0, h1 = WEEK_DIGEST
     if now.weekday() == wd and h0 <= now.hour < h1:
-        week = [r for r in items if not r.get('due') or is_priority(r) or _dt(r['due']) <= now + timedelta(days=7)]
+        week = [r for r in items if (not r.get('due') and not r.get('optional')) or is_priority(r)
+                or (r.get('due') and _dt(r['due']) <= now + timedelta(days=7))]
         if week:
             top = week[0]
             out.append({'key': f'oblig|week|{now:%Y-%m-%d}', 'kind': 'oblig_week', 'prio': 2, 'ids': [],
@@ -835,6 +966,10 @@ QUIZ_SHOW_RX = re.compile(r'תראה|הראה|תציג|טעיתי|טעויות|�
 NOT_QUIZ_RX = re.compile(r'סילבוס|מבחן|כתוב|תן לי|תכין|תייצר|תרגול')     # the syllabus' "בוחן", a practice request
 
 
+FULL_RX = re.compile(r'^\s*(?:ו?מה|אילו|איזה|תראה לי|תציג)\s+(?:יש\s+)?(?:לי\s+)?(?:עוד\s+)?(?:כל\s+)?(?:ה)?'
+                     r'(?:הגשות|דדליינים|דד-ליינים|מועדי\s+הגשה|מבחנים\s+ומטלות|מטלות\s+ובחנים|להגיש|פתוח|פתוחות|פתוחים)'
+                     r'(?:\s+(?:שלי|לי|עכשיו|השבוע|פתוחות|פתוחים))*(?:\s+[בל]?\S+)?\s*[?!.]*\s*$')
+
 HW_WORD = r'(?:תרגיל(?:\s+בית)?|תרגילי\s+בית|שיעורי\s+(?:ה)?בית|ש["״]ב|מטל(?:ה|ות)|הגשות|ההגשות|hw|assignment)'
 HW_LIST_RX = re.compile(r'^\s*(?:ו?מה|אילו|איזה|יש)\s+(?:לי\s+)?(?:עוד\s+)?(?:ה)?' + HW_WORD +
                         r'(?:\s+(?:ה)?(?:פתוחים|פתוחות|שנשארו|שלא הגשתי|שעוד לא הגשתי|שלי))+(?:\s+[בל]?\S+)?\s*[?!.]*\s*$', re.I)
@@ -854,7 +989,17 @@ def _course_for_num(num: str, course: str | None, store: dict) -> list[str]:
 def route(text: str, chat: str, course: str | None = None):
     """Deterministic: → the answer (str), or (text, [files to send]), or None when the message isn't one of these."""
     t = (text or '').strip()
-    if not t or len(t) > 80:
+    if not t:
+        return None
+    for mod in ('deadline_ladder', 'away'):               # 20/11 "תוסיף הגשה…" · "אני בים המלח מ-26 עד 29" · "מה לסיים לפני…"
+        try:
+            got = __import__(f'agent.{mod}', fromlist=['route']).route(t, chat)
+        except Exception as e:
+            print(f'  ⚠️ {mod} route: {e!r}'[:200])
+            got = None
+        if got is not None:
+            return got
+    if len(t) > 80:
         return None
     try:                                                   # 15/11 "מה סיננת?" — the university updates not sent to him
         from integrations import univ_relevance
@@ -873,8 +1018,10 @@ def route(text: str, chat: str, course: str | None = None):
             names = ', '.join(_course_name(c) for c in cks) or ', '.join(_course_name(c) for c in _active())
             return f'באיזה קורס? ({names})'
         return sheet_answer(cks[0], num, want, store=store)
+    if FULL_RX.match(t) and not DAY_RX.search(t):
+        return full_text(chat, course)
     if HW_LIST_RX.match(t) and not DAY_RX.search(t):
-        return answer_text(chat, course, only='hw')
+        return full_text(chat, course) if re.search(r'הגשות|מטלות', t) else answer_text(chat, course, only='hw')
     if MISSING_RX.match(t) and not DAY_RX.search(t):
-        return answer_text(chat, course)
+        return full_text(chat, course)
     return None

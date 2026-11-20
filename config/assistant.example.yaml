@@ -1,0 +1,5 @@
+# config/assistant.example.yaml — copy to config/assistant.yaml to change. Standing authorisations of the owner.
+#
+# auto_deadlines_to_calendar: put every tracked deadline (agent/obligations) into the owner's own Google Calendar
+#   without asking each time (agent/deadline_cal). Off unless the owner explicitly asks for it.
+auto_deadlines_to_calendar: false
