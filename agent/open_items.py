@@ -24,7 +24,7 @@ from pathlib import Path
 
 RAISED_HOURS = 24
 # "ביקשתי מהם ביטול, מחכה לעדכון" (and the 15/11 typo "מחאה לעדכון"): sent, not done
-WAIT_RX = re.compile(r'(?<![א-ת])(?:מחכה|מחכים|ממתין|ממתינה|ממתינים|אחכה|נחכה|מחאה\s+ל(?:עדכון|תשובה|אישור)|'
+WAIT_RX = re.compile(r'(?<![א-ת])ו?(?:מחכה|מחכים|ממתין|ממתינה|ממתינים|אחכה|נחכה|מחאה\s+ל(?:עדכון|תשובה|אישור)|'
                      r'עוד\s+לא\s+(?:ענו|חזרו|אישרו|ענה|ענתה|חזר)|טרם\s+(?:ענו|אישרו)|'
                      r'ביקשתי\s+(?:מהם|ממנו|ממנה|מהמלון|מה)|פניתי\s+(?:אליהם|אליו|אליה|ל))(?![א-ת])')
 # first person past, his own doing ("ביטלתי", "החזרתי"), or the plain "זה סגור" / "בוצע"
@@ -225,6 +225,58 @@ def wait(chat: str, item: dict, now: datetime | None = None, life_path: Path | N
              ('🗑️ לא צריך תזכורת', f'rmd:cancel:{rid}')])
 
 
+# 16/11 a follow-up he didn't have a reminder for: "שלחתי מייל למרצה ומחכה לתשובה", "ביקשתי החזר, מחכה לאישור". Both a
+# request he made and a reply he's waiting for: "מחכה לך בבית" / "מחכה לשיעור" aren't.
+TRACK_RX = re.compile(r'(?<![א-ת])(?:שלחתי|ביקשתי|פניתי|כתבתי|התקשרתי|הגשתי\s+בקשה|השארתי\s+הודעה|הזמנתי|ערערתי)(?![א-ת])')
+TRACK_WAIT_RX = re.compile(r'(?<![א-ת])(?:מחכה|ממתין|ממתינה|מחאה|לתשובה|לאישור|לעדכון|להחזר|שיחזרו|שיענו|יענו|יחזרו)(?![א-ת])')
+TRACK_DAYS = 2
+TRACK_PREFIX = 'לבדוק אם ענו: '
+
+
+def track(chat: str, text: str, now: datetime | None = None, life_path: Path | None = None) -> tuple[str, list]:
+    """His own words become a check in two days at 10:00 (nothing goes out; a mail that looks like the answer closes the
+    loop earlier — agent/core.mail_tick → answered()). → (text, buttons)."""
+    from agent import life
+    now = now or datetime.now()
+    at = (now + timedelta(days=TRACK_DAYS)).replace(hour=10, minute=0, second=0, microsecond=0)
+    what = re.sub(r'\s+', ' ', text).strip(' .!')[:120]
+    rec = life.add_reminder(chat, {'text': TRACK_PREFIX + what, 'when': at.isoformat(timespec='minutes')}, life_path)
+    d = life._load(life_path)
+    for r in d['reminders']:
+        if r.get('id') == rec['id']:
+            r['waiting'] = now.isoformat(timespec='minutes')
+    life._save(d, life_path)
+    day = 'מחרתיים' if TRACK_DAYS == 2 else f'בעוד {TRACK_DAYS} ימים'
+    return (f"👍 רשמתי שאתה מחכה לתשובה. אם לא אראה שהגיעה, אבדוק איתך {day} ב-10:00.",
+            [('👍 סבבה', 'noop:r'), ('🗑️ לא צריך', f"rmd:cancel:{rec['id']}")])
+
+
+def waiting(chat: str, life_path: Path | None = None) -> list[dict]:
+    """What he's waiting on: open reminders marked waiting (his "מחכה לתשובה")."""
+    from agent import life
+    return [r for r in life._load(life_path)['reminders']
+            if r.get('chat') == chat and r.get('active') and r.get('waiting') and not r.get('closed')]
+
+
+def answered(chat: str, mails: list[dict], life_path: Path | None = None) -> list[tuple[dict, dict]]:
+    """[(waiting reminder, the mail that looks like its answer)]: two words that name the thing (not generic) shared by
+    the reminder and the mail's sender / subject / summary. Each reminder once."""
+    out, used = [], set()
+    for r in waiting(chat, life_path):
+        what = _content(r.get('text', '').replace(TRACK_PREFIX, ''))
+        want = [f for f in _words(what) if f - _GENERIC]  # one entry per word (its forms), generic words out
+        if len(want) < 2:
+            continue
+        for m in mails:
+            body = ' '.join(str(m.get(k) or '') for k in ('from', 'subject', 'summary', 'task'))
+            got = set().union(*_words(body)) if _words(body) else set()
+            if sum(1 for f in want if f & got) >= 2 and r['id'] not in used:
+                out.append((r, m))
+                used.add(r['id'])
+                break
+    return out
+
+
 def button(chat: str, payload: str) -> str:
     """oi:done:r:<id> / oi:done:t:<id> (a press is his explicit choice) · oi:other."""
     parts = payload.split(':')
@@ -273,6 +325,9 @@ def handle(chat: str, text: str, now: datetime | None = None) -> tuple[str, str,
                 return 'text', f"👍 כבר סגור אצלי: {again[0]['text']}. לא אזכיר.", []
         except Exception as e:
             print(f'  ⚠️ open items (closed): {e!r}'[:160])
+    if not hits and how == 'waiting' and TRACK_RX.search(text) and TRACK_WAIT_RX.search(text):
+        body, btns = track(chat, text, now)              # 16/11 nothing of his was open: a new thing to follow up
+        return 'buttons', body, btns
     if not hits:
         return None
     if len(hits) > 1:

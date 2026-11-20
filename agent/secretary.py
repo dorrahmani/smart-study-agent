@@ -3,7 +3,7 @@ agent/secretary.py — the owner sends a link, a file or a photo; the agent read
 
   • a link (web page / PDF) or a file (PDF, Word, Excel, PowerPoint, text) or a photo of a document
   • with a question ("מה הדדליין פה?") → answers it; without → a short summary + what needs doing
-  • follow-up questions about the same thing for 30 minutes ("ומה צריך להגיש שם?")
+  • follow-up questions about the same thing for 30 minutes ("ומה צריך להגיש שם?"); after that agent/my_files finds it
   • dates in it (deadline, meeting, event) → offered for the calendar, through the usual ✅ flow
 
 Answers come ONLY from the content (The owner 06/10: "אם לא יודע אל תמציא") — if it isn't there, it says so.
@@ -166,7 +166,7 @@ def save_link(url: str) -> tuple[Path, str]:
 
 # ── asking ─────────────────────────────────────────────────────────────────
 
-PROMPT = """אתה המזכיר/ה האישי/ת של המשתמש (סטודנט באוניברסיטת ת"א). היום {now}.
+PROMPT = """אתה המזכיר/ה האישי/ת של {who}. היום {now}.
 המשתמש שלח {what}. {task}
 
 כללים:
@@ -176,7 +176,8 @@ PROMPT = """אתה המזכיר/ה האישי/ת של המשתמש (סטודנט
 
 החזר JSON בלבד:
 {{"answer": "התשובה למשתמש",
-  "dated": "כל דבר בתוכן עם תאריך שרלוונטי למשתמש לשים ביומן (דדליין, פגישה, אירוע, תור) — שורה לכל אחד, עם כותרת, תאריך מלא ושעה אם יש; ריק אם אין"}}"""
+  "dated": "כל דבר בתוכן עם תאריך שרלוונטי למשתמש לשים ביומן (דדליין, פגישה, אירוע, תור) — שורה לכל אחד, עם כותרת, תאריך מלא ושעה אם יש; ריק אם אין",
+  "keys": "מה ששווה לשמור כדי למצוא את זה אחר כך: מספרי הזמנה/אסמכתא/לקוח, שמות של עסקים, מקומות ואנשים, טלפונים, כתובות, סכומים, תאריכים ומועדי ביטול — שורה לכל אחד בצורה 'מה: ערך', רק מה שכתוב בתוכן; ריק אם אין. בלי מספרי כרטיס אשראי, תעודת זהות או סיסמאות"}}"""
 
 
 @api_only()                                             # a document or a page is someone else's words
@@ -188,7 +189,9 @@ def ask(path: Path, question: str = '', what: str = '', client=None) -> dict:
     parts, desc = _parts(path)
     task = (f'השאלה שלו: "{question}"' if question.strip() else
             'אין שאלה — תן סיכום קצר (עד 6 נקודות) ואחריו *מה צריך לעשות* (אם יש: הגשות, תשלומים, תאריכים, אישורים).')
-    prompt = PROMPT.format(now=datetime.now().strftime('%d/%m/%Y %H:%M'), what=what or desc, task=task)
+    from agent import domains                          # 16/11 who he is comes from his life domains (student today)
+    prompt = PROMPT.format(now=datetime.now().strftime('%d/%m/%Y %H:%M'), what=what or desc, task=task,
+                           who=domains.identity('המשתמש'))
     resp = client.models.generate_content(
         model=MODEL, contents=parts + [prompt],
         config=T.GenerateContentConfig(temperature=0.2, max_output_tokens=4000, response_mime_type='application/json',
@@ -199,7 +202,20 @@ def ask(path: Path, question: str = '', what: str = '', client=None) -> dict:
         j = json.loads(resp.text or '{}')
     except ValueError:
         j = {'answer': (resp.text or '').strip(), 'dated': ''}
-    return {'answer': (j.get('answer') or '').strip() or 'לא הצלחתי לקרוא את זה.', 'dated': (j.get('dated') or '').strip()}
+    keys = j.get('keys') or ''
+    if isinstance(keys, list):
+        keys = '\n'.join(str(k) for k in keys)
+    return {'answer': (j.get('answer') or '').strip() or 'לא הצלחתי לקרוא את זה.', 'dated': (j.get('dated') or '').strip(),
+            'keys': _no_secrets(str(keys).strip())}
+
+
+_CARD = re.compile(r'(?<!\d)(?:\d[ -]?){13,19}(?!\d)')                 # a card number, never kept
+_SECRET_LINE = re.compile(r'אשראי|כרטיס|תעודת זהות|ת\.ז|סיסמ|cvv|password', re.I)
+
+
+def _no_secrets(keys: str) -> str:
+    """What gets kept for later search: no card numbers, IDs or passwords even if the model wrote them."""
+    return '\n'.join(ln for ln in keys.splitlines() if ln.strip() and not _SECRET_LINE.search(ln) and not _CARD.search(ln))
 
 
 @api_only()
@@ -228,9 +244,10 @@ def ask_url(url: str, question: str = '', client=None) -> str:
     return (resp.text or '').strip() or 'לא הצלחתי לקרוא את הדף.'
 
 
-def remember(u: dict, path: Path | None, name: str, url: str = '') -> None:
+def remember(u: dict, path: Path | None, name: str, url: str = '', answer: str = '', keys: str = '') -> None:
+    """The last thing read (follow-ups for 30 minutes) — and, with the answer, what agent/my_files keeps for good."""
     u['doc'] = {'path': str(path) if path else '', 'url': url, 'name': name,
-                'ts': datetime.now().isoformat(timespec='seconds')}
+                'ts': datetime.now().isoformat(timespec='seconds'), 'answer': (answer or '')[:4000], 'keys': keys or ''}
 
 
 def current(u: dict) -> dict | None:

@@ -148,6 +148,8 @@ def group_request(sender_role: str | None, mentioned: list[str], own: set[str], 
 
 GROUP_ON_RX = re.compile(r'\s*(?:תפעיל|הפעל)\s+(?:את\s+עצמך\s+)?(?:כאן|פה|בקבוצה(?:\s+הזו)?)\s*[.!]*\s*')
 GROUP_OFF_RX = re.compile(r'\s*(?:תכבה|כבה)\s+(?:את\s+עצמך\s+)?(?:כאן|פה|בקבוצה(?:\s+הזו)?)\s*[.!]*\s*')
+# 17/11 the owner: "תענה לחברים כאן" — the friends he marks get answers about the public project (agent/group_helper.py)
+FRIENDS_ON_RX = re.compile(r'\s*(?:תענה|תעני|תעזור|תעזרי)\s+(?:גם\s+)?ל(?:חברים|חבר׳ה|חברה)\s+(?:כאן|פה|בקבוצה(?:\s+הזו)?)\s*[.!]*\s*')
 DEBATE_MAX = 2000                        # what the bridge passes on; the worker cuts further
 MAX_AGE_S = 300                          # after a reconnect old messages arrive: a tag from yesterday starts nothing
 
@@ -174,19 +176,44 @@ def group_event(role: str | None, mentioned: list[str], own: set[str], text: str
                 kind: str = 'text', forwarded: bool = False, edited: bool = False,
                 now: float | None = None, old: bool = False) -> tuple[str, str] | None:
     """05/11 the only ways a group message gets past the bridge. ('owner', request): The owner's own new message with a real
-    tag, in a group he turned on (or turning it on). ('debate', text): the one person of a live debate. Else None, and
-    nothing is written, so no worker, no model. Names and the message's words never decide who someone is."""
+    tag, in a group he turned on (or turning it on). ('debate', text): the one person of a live debate. ('friend', text):
+    17/11 someone on the friends list of a group in "תענה לחברים" (gate['friends'][gid]: on + their sender ids). Else
+    None, and nothing is written, so no worker, no model. Names and the message's words never decide who someone is."""
     if forwarded or edited or old or not gate.get('on'):
         return None
     on = gid in (gate.get('groups') or [])
     req = group_request(role, mentioned, own, text)
     if req is not None:
-        return ('owner', req) if on or GROUP_ON_RX.fullmatch(req) else None
+        return ('owner', req) if on or GROUP_ON_RX.fullmatch(req) or FRIENDS_ON_RX.fullmatch(req) else None
     s = (gate.get('sessions') or {}).get(gid)
     if on and s and role != 'owner' and kind == 'text' and (text or '').strip() and set(sender) & set(s.get('target') or []) \
             and (now or time.time()) < s.get('until', 0):
         return 'debate', text[:DEBATE_MAX]
+    f = (gate.get('friends') or {}).get(gid) or {}
+    if on and f.get('on') and role != 'owner' and kind == 'text' and (text or '').strip() \
+            and set(sender) & set(f.get('allow') or []):
+        return 'friend', text[:DEBATE_MAX]
     return None
+
+
+def friend_spool(msg_id: str, gid: str, sender: set[str], participant: str, text: str, mentioned: list[str],
+                 own: set[str], ctx_info=None) -> dict:
+    """17/11 a friend's message as the worker gets it: is it to the bot (a real tag / a reply to it), or to someone
+    else; the sender's JID so the answer can quote it."""
+    users = {(x or '').split('@')[0].split(':')[0] for x in mentioned}
+    q = ((getattr(ctx_info, 'participant', '') or '') if ctx_info is not None else '').split('@')[0].split(':')[0]
+    return {'bridge': True, 'id': msg_id, 'chat': gid, 'role': 'group_friend', 'group': True, 'friend': True,
+            'sender': sorted(u.split('@')[0] for u in sender), 'participant': participant, 'type': 'text', 'text': text,
+            'tagged': bool(users & own), 'tags_other': bool(users - own - {''}),
+            'reply_to_bot': bool(q and q in own), 'reply_to_other': bool(q and q not in own)}
+
+
+def reply_message(text: str, quote: dict):
+    """17/11 a text that quotes the friend's message (WhatsApp's reply), built from the job: id, participant, text."""
+    from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextMessage, Message
+    return Message(extendedTextMessage=ExtendedTextMessage(text=text, contextInfo=ContextInfo(
+        stanzaID=str(quote.get('id') or ''), participant=str(quote.get('participant') or ''),
+        quotedMessage=Message(conversation=str(quote.get('text') or '')[:200]))))
 
 
 def group_targets(mentioned: list[str], own: set[str], quoted_sender: str = '') -> list[str]:
@@ -298,6 +325,18 @@ def _text_and_context(m) -> tuple[str, str, str]:
     return 'other', '', ''
 
 
+def reaction_of(m) -> tuple[str, str] | None:
+    """(emoji, id of the message it is on) for a WhatsApp reaction in a private chat; None if this isn't one. A removed
+    reaction (empty emoji) is None too."""
+    try:
+        if not m.HasField('reactionMessage'):
+            return None
+        r = m.reactionMessage
+        return (r.text, r.key.ID) if r.text and r.key.ID else None
+    except (ValueError, AttributeError):
+        return None
+
+
 UNREADABLE = (('videoMessage', 'סרטון'), ('ptvMessage', 'סרטון'), ('locationMessage', 'מיקום'),
               ('liveLocationMessage', 'מיקום'), ('pollCreationMessage', 'סקר'), ('pollCreationMessageV3', 'סקר'))
 
@@ -333,6 +372,10 @@ def group_message(c, ev, groups: dict, own_ids: set[str], attach_media) -> None:
     if event and event[0] == 'debate':                   # the one person of a live debate: their words, nothing else
         spool_write({'bridge': True, 'id': ev.Info.ID, 'chat': gid, 'role': 'group_member', 'group': True, 'debate': True,
                      'sender': sorted(u.split('@')[0] for u in sender), 'type': 'text', 'text': event[1]})
+        return
+    if event and event[0] == 'friend':                   # 17/11 a friend on the list: words + who they talk to
+        spool_write(friend_spool(ev.Info.ID, gid, sender, _jid_str(src.Sender), event[1], mentioned, own_ids,
+                                 _context_info(ev.Message)))
         return
     if req is None and role == 'owner' and (mentioned or '@' in (text or '')):
         # The owner tagged someone/something but not (recognisably) the bot — ids only, never the text
@@ -474,6 +517,10 @@ def main() -> int:
                 ignored['n'] += 1
                 (BRIDGE / 'ignored.json').write_text(json.dumps({'count': ignored['n']}), encoding='utf-8')
             return
+        if (r := reaction_of(ev.Message)) is not None:   # 17/11 👍/👎 on an answer (agent/feedback), the rhythm
+            spool_write({'bridge': True, 'id': ev.Info.ID, 'chat': chat, 'role': role, 'from': src.Chat.User,
+                         'type': 'reaction', 'text': r[0], 'reply_to': r[1]})
+            return
         msg = {'bridge': True, 'id': ev.Info.ID, 'chat': chat, 'role': role, 'from': src.Chat.User, 'type': kind,
                'text': text, 'reply_to': quoted}
         try:                                               # a forwarded message is content, never a command
@@ -505,6 +552,12 @@ def main() -> int:
                     if kind == 'document':
                         resp = client.send_document(to, job['path'], caption=job.get('text') or None,
                                                     filename=Path(job['path']).name)
+                    elif kind not in ('video', 'image') and job.get('quote') and to.Server == 'g.us':
+                        try:                                    # 17/11 an answer to a friend quotes his message
+                            resp = client.send_message(to, reply_message(job.get('text', ''), job['quote']))
+                        except Exception as e:
+                            log.warning('quoted send failed, sending plain: %s', e)
+                            resp = client.send_message(to, job.get('text', ''))
                     elif kind not in ('video', 'image'):
                         resp = client.send_message(to, job.get('text', ''))
                     receipt = {'ok': True, 'id': getattr(resp, 'ID', '')}

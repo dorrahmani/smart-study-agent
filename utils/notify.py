@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, time
 from pathlib import Path
 
@@ -159,9 +160,22 @@ def _whatsapp(text: str, buttons) -> bool:
     return bool(wa.send_buttons(wa.owner(), text, flat) if flat else wa.send_text(wa.owner(), text))
 
 
+def _muted(text: str) -> str:
+    """16/11 a kind the owner turned off ("תפסיק לשלוח לי דברים שלא רלוונטיים"), or off by default ("✅ … חזר לעבוד"):
+    agent/noise. → the kind, or ''. Never breaks a send."""
+    try:
+        from agent import noise
+        return noise.blocked(text)
+    except Exception:
+        return ''
+
+
 def deliver(text: str, buttons=None, markdown: bool = True) -> str | None:
     """Send now on WhatsApp → 'whatsapp', or None (logged + kept in the undelivered-alerts file). No Telegram."""
     reason = ''
+    if (k := _muted(text)):
+        _log({'event': 'muted', 'kind': k, 'text': text[:200]})
+        return 'muted'
     try:
         if _whatsapp(text, buttons):
             return 'whatsapp'
@@ -195,6 +209,9 @@ def notify(text: str, *, key: str | None = None, priority: str = 'normal', butto
     st = _load(state_path)
     if key and key in st['sent']:
         return 'dup'
+    if (k := _muted(text)):                               # not queued for the morning either
+        _log({'event': 'muted', 'kind': k, 'key': key, 'text': text[:200]})
+        return 'muted'
     stamp = (now or datetime.now()).isoformat(timespec='seconds')
     if priority != 'urgent' and in_quiet_hours(now):
         st['digest'].append({'text': text, 'key': key, 'ts': stamp})
@@ -214,8 +231,40 @@ def notify(text: str, *, key: str | None = None, priority: str = 'normal', butto
     return 'sent'
 
 
+def failure_key(name: str, tail: str, today=None) -> str:
+    """A failing cron job's alert key: the same error again is the same alert for a week. 11–16/11 "Brain Sync נכשלה:
+    AuthError" came every morning for six days (NotebookLM's login, which has its own alert). A different error is new."""
+    import hashlib
+    from datetime import date as _date
+    today = today or _date.today()
+    m = re.findall(r'\b([A-Z]\w*(?:Error|Exception|Exit))\b', tail or '')
+    sig = m[-1] if m else re.sub(r'[\d\W_]+', ' ', (tail or '').strip().splitlines()[-1] if (tail or '').strip() else '')[:60]
+    y, w, _ = today.isocalendar()
+    return f"cron-fail:{name}:{hashlib.sha1(sig.encode()).hexdigest()[:8]}:{y}-W{w:02d}"
+
+
 def was_sent(key: str, state_path: Path | None = None) -> bool:
     return key in _load(state_path)['sent']
+
+
+def _rhythm_wait(items: list[dict], now: datetime | None = None) -> bool:
+    """17/11 (agent/rhythm): the overnight digest waits for the owner's first warm hour — at most until 2h after the quiet
+    hours end, and never when it holds a homework deadline (hw:…). Any error → it goes now."""
+    try:
+        if any(str(i.get('key') or '').startswith('hw:') for i in items):
+            return False
+        w = quiet_window()
+        t = il_time(now)
+        if not w or (t.hour * 60 + t.minute) - (w[1].hour * 60 + w[1].minute) >= 120:
+            return False
+        from agent import rhythm
+        n = now or datetime.now()
+        if rhythm.prefer_later(n.replace(tzinfo=None) if n.tzinfo else n):
+            _log({'event': 'digest_wait', 'n': len(items)})
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def flush_digest(now: datetime | None = None, state_path: Path | None = None) -> int:
@@ -225,6 +274,8 @@ def flush_digest(now: datetime | None = None, state_path: Path | None = None) ->
     st = _load(state_path)
     items = st['digest']
     if not items:
+        return 0
+    if state_path is None and _rhythm_wait(items, now):
         return 0
     body = '\n\n'.join(i['text'] for i in items)
     text = f'📬 *בזמן שישנת* ({len(items)})\n\n{body}' if len(items) > 1 else items[0]['text']

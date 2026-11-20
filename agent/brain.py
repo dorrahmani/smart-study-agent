@@ -179,6 +179,11 @@ def uploadable(root: Path | None = None, now: datetime | None = None) -> list[Pa
         out += [r / '🗣️ שיחות עם קלוד.md'] if (r / '🗣️ שיחות עם קלוד.md').exists() else []
         out += sorted((r / '🗣️ שיחות עם קלוד').glob('*.md'))
     out += sorted(p for p in (r / '📧 מיילים').glob('*.md') if p.stem in months) if (r / '📧 מיילים').exists() else []
+    try:                                    # 16/11 + the assistant's index notes (👩‍💼 העוזר), minus every `private` note
+        from vault_sync import assistant_export
+        out = assistant_export.for_notebook(r, out)
+    except Exception as e:
+        print(f'  ⚠️ assistant notes: {e!r}'[:200])
     return out
 
 
@@ -235,7 +240,7 @@ ASK_RX = re.compile(r'(?:מה (?:היה|קרה) עם ה|תזכיר(?:י)? לי �
                     r'מה (?:סיכמנו|אמרתי לך) על|מה (?:כתבו|אמרו) (?:לי )?(?:במייל|במודל|על)|'
                     r'(?:במייל|במודל) (?:ש|מ)(?:לפני|לפנ|שבוע|חודש)|'
                     r'(?:ה)?פרויקט(?:ים)? (?:שלי|ה?אחרון)|באיזה פרויקט|מה (?:המצב|עשיתי|עבדתי) (?:ב|על )(?:ה)?פרויקט|'
-                    r'\b(?:BGOOD|OSINT|network-academy|tau-study-starter)\b|'
+                    r'\b(?:my-shop|my-tool)\b|'
                     # 03/11 his Claude Code sessions: "מה עשינו בקלוד על האתר?", "מה סיכמתי עם קלוד", "מה נשאר פתוח"
                     r'(?:עשינו|עשיתי|סיכמנו|סיכמתי|דיברנו|דיברתי|בנינו|בניתי|תיקנו|נשאר)[^?]{0,25}(?:ב|עם |של )?קלוד|'
                     r'(?:ב|עם |של )קלוד(?:\s*קוד)?\s+(?:על|לגבי|ב)|מה נשאר (?:פתוח|לעשות) (?:ב|על )?(?:ה)?פרויקט)', re.I)

@@ -167,7 +167,8 @@ def _open_q_text(chat: str = '', qs: list[dict] | None = None) -> str:
     """03/11: the bot's numbered questions still open — so an answer in words ("אני לא ניגש למבחן") closes one."""
     qs = _open_qs(chat) if qs is None else qs
     return '\n'.join(f"שאלה {i}: {(o.get('text') or o.get('q', ''))[:400]}\n  אפשרויות: "
-                     + ' · '.join(f'{j}) {lbl}' for j, lbl in enumerate(o['labels'], 1))
+                     + ' · '.join(f'{"אבגדהוזחט"[j - 1] if o.get("style") == "abc" else j}) {lbl}'
+                                  for j, lbl in enumerate(o['labels'], 1))
                      for i, o in enumerate(qs, 1)) or '(אין)'
 
 

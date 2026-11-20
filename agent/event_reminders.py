@@ -28,6 +28,7 @@ WINDOW_MIN = 15                     # a reminder due up to 15 min ago still goes
 EXAM_RX = re.compile(r'מבחן|בחינה|מועד [אבג]')
 PREP_RX = re.compile(r'יום הולדת|יומולדת|יום נישואין|חתונה|בר מצווה|בת מצווה|ברית|טיול|חופשה|טיסה|נסיעה|חג|ארוחת חג')
 _cache: dict = {'at': 0.0, 'events': []}
+_tt_cache: dict = {'at': 0.0, 'rows': []}
 
 
 def _load(path: Path | None = None) -> dict:
@@ -108,6 +109,8 @@ def leads_for(ev: dict, d: dict) -> list[int]:
     if not d['settings'].get('on', True):
         return []
     start, all_day = _start(ev)
+    if ((ev.get('extendedProperties') or {}).get('private') or {}).get('ssa_src') == 'obligation':
+        return []                                     # 20/11 a deadline event: agent/deadline_ladder speaks for it
     if EXAM_RX.search(ev.get('summary') or '') or (ev.get('summary') or '').lstrip().startswith(('❌', '✅')):
         return []                                     # 20/10: "⏰ בעוד 20 דקות — ❌ בוטל — …" ×3 in one day
     from agent import office_hours
@@ -137,11 +140,43 @@ def _events(now: datetime, fetch=None) -> list[dict]:
     return fetch()
 
 
-def due(now: datetime | None = None, fetch=None, path: Path | None = None) -> list[str]:
+PRIMER = ROOT / 'data' / 'primer_sent.json'
+
+
+def primer_sent(start: datetime, path: Path | None = None) -> bool:
+    """scripts/pre_lecture_primer.py already sent this lesson's "⏰ עוד מעט" (its key: 'YYYY-MM-DD:course:kind:HH:MM').
+    The owner 03/11: reminders "בדיוק שעה לפני" — the primer is that one; on 03/11 every class got it and a second ping 40 min later."""
+    try:
+        sent = json.loads((path or PRIMER).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    day, hhmm = f'{start:%Y-%m-%d}:', f':{start:%H:%M}'
+    return any(k.startswith(day) and k.endswith(hhmm) for k in sent)
+
+
+def _site_moved(ev: dict) -> bool:
+    """The university site has another room for it: then the 20-minute reminder carries news and still goes out."""
+    try:
+        from agent import lesson_sync
+        return bool(lesson_sync.site_place(ev))
+    except Exception:
+        return False
+
+
+def _cancelled(ev: dict, path: Path | None = None) -> bool:
+    try:
+        from agent import schedule
+        return schedule.cancelled(ev, path=(path.parent / 'schedule_overrides.json') if path else None)
+    except Exception:
+        return False
+
+
+def due(now: datetime | None = None, fetch=None, path: Path | None = None, primer_path: Path | None = None) -> list[str]:
     """Reminder texts due now (each sent once). Includes the 21:30 heads-up for tomorrow's early events."""
     now = now or datetime.now()
     d = _load(path)
     out = []
+    primer_path = primer_path or (path.parent / 'primer_sent.json' if path else None)    # a test's store: its own folder
     events = _events(now, fetch)
     from agent import daytools, office_hours
     closed = daytools._closed_items(None) if events else []
@@ -151,11 +186,16 @@ def due(now: datetime | None = None, fetch=None, path: Path | None = None) -> li
             continue
         if daytools._closed_event(ev, closed):             # 05/11: The owner closed this — no reminder for its calendar entry
             continue
+        if _is_lesson(ev) and _cancelled(ev, path):        # 16/11 the university cancelled it (agent/schedule)
+            continue
         for lead in leads_for(ev, d):
             at = start - timedelta(minutes=lead)
             key = f"{ev.get('id')}|{start.isoformat()}|{lead}"
             if at <= now < at + timedelta(minutes=WINDOW_MIN) and key not in d['sent']:
                 d['sent'][key] = now.isoformat(timespec='seconds')
+                if _is_lesson(ev) and lead == d['settings'].get('lessons', LESSON_LEAD) and ev.get('id') not in d['override'] \
+                        and primer_sent(start, primer_path) and not _site_moved(ev):
+                    continue        # 16/11 the "⏰ עוד מעט: … · room" primer went out an hour before: a second ping is noise
                 if office_hours.is_office_hours(ev):
                     if office_hours.busy_with(ev, events):     # "אם אני פנוי אצטרף" — busy → no reminder at all
                         continue
@@ -171,8 +211,36 @@ def due(now: datetime | None = None, fetch=None, path: Path | None = None) -> li
             if key not in d['sent']:
                 d['sent'][key] = now.isoformat(timespec='seconds')
                 out.append(f"🌙 *מחר מוקדם:* {start:%H:%M} — {ev.get('summary', '')}" + _where(ev))
+    if d['settings'].get('leave'):                     # 19/11 opt-in: "כדאי לצאת עכשיו" before a walk across the campus
+        try:
+            out += leave_now(now, events, d)
+        except Exception as e:
+            print(f'  ⚠️ leave-now: {e!r}'[:200])
     if out:
         _save(d, path, now)
+    return out
+
+
+def leave_now(now: datetime, events: list[dict], d: dict, timetable=None) -> list[str]:
+    """The next session is in another building and the break is shorter than the walk (agent/campus): one line at the
+    minute to leave. Only with settings['leave'] (off by default: "תזכיר לי לצאת בין שיעורים" turns it on)."""
+    from agent import campus, proactive
+    if timetable is None:                              # the my.tau cache, read at most every 5 minutes
+        if _time.time() - _tt_cache['at'] > 300:
+            from agent import fastpath
+            _tt_cache.update(at=_time.time(), rows=fastpath.sessions(now))
+        timetable = _tt_cache['rows']
+    evs = proactive.with_timetable(now, list(events), sessions=timetable)
+    timed = sorted(((a, b, ev) for ev in evs for a, b, allday in [proactive._span(ev)]
+                    if a and not allday and a.date() == now.date() and proactive._countable(ev)), key=lambda x: x[0])
+    out = []
+    for e1, b1, e2, a2, hop in proactive._hops(timed):
+        at = campus.leave_at(a2, hop)
+        key = f"leave|{e2.get('id')}|{a2.isoformat()}"
+        if at <= now < at + timedelta(minutes=5) and key not in d['sent']:
+            d['sent'][key] = now.isoformat(timespec='seconds')
+            out.append(f"🚶 *כדאי לצאת עכשיו* — {a2:%H:%M} {proactive._short(e2)} ב{hop['to']} "
+                       f"(~{hop['walk']} דק׳ הליכה מ{hop['frm']}).")
     return out
 
 

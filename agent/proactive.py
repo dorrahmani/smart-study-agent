@@ -6,7 +6,7 @@ What the other ticks already say (warm-ups, exam eve, deadlines, office hours, m
 This only notices the gaps between them:
 
     clash      two timed events overlap in the next 48h (a lesson vs a personal event, or two personal ones)
-    trip       a trip / vacation (all-day) with lessons inside it — "you're in Eilat, the lecture is at 10:00"
+    trip       a trip / vacation (all-day) with lessons inside it — "you're on a trip, the lecture is at 10:00"
     travel     campus ↔ an off-campus place back to back with too little time to get there
     mail       a university mail (the brain's 📧 note) that asked the owner to answer / register / pay / fill,
                1–6 days old, not a task already, no reply seen in his sent mail
@@ -52,14 +52,16 @@ DAY_FROM, DAY_TO = 9, 22            # the hours a study window may fall in
 WEEKDAY_HE = ['שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'ראשון']
 PRIO = {'clash': 0, 'trip': 0, 'travel': 1, 'mail': 2, 'promise': 1, 'study': 3,
         'deadline': 0, 'prep': 1, 'gift': 2, 'waiting': 3,
-        'oblig_new': 1, 'oblig_remind': 0, 'oblig_late': 1, 'oblig_week': 2, 'oblig_news': 1}   # 14/11 agent/obligations (a note may set its own)
+        'oblig_new': 1, 'oblig_remind': 0, 'oblig_late': 1, 'oblig_week': 2, 'oblig_news': 1,
+        'grade_feedback': 1}   # 14/11 agent/obligations (a note may set its own)
 # a category the owner can mute in words → the kinds in it, and how it is named back to him
 GROUPS = {'calendar': ({'clash', 'trip', 'travel'}, 'התנגשויות ביומן'), 'mail': ({'mail'}, 'מיילים שמחכים לך'),
           'promise': ({'promise'}, 'דברים שאמרת שתעשה'), 'prep': ({'prep'}, 'הכנה לתורים ולנסיעות'),
           'gift': ({'gift'}, 'מתנות וברכות לאירועים'), 'deadline': ({'deadline'}, 'דדליינים מהיומן'),
           'waiting': ({'waiting'}, 'דברים שמחכים לאישור שלך'), 'study': ({'study'}, 'חלונות ללמידה'),
           'escalate': (set(), 'מעקב כשאתה לא עונה'),
-          'oblig': ({'oblig_new', 'oblig_remind', 'oblig_late', 'oblig_week', 'oblig_news'}, 'מטלות ובחנים מהמודל')}
+          'oblig': ({'oblig_new', 'oblig_remind', 'oblig_late', 'oblig_week', 'oblig_news', 'grade_feedback'},
+                    'מטלות ובחנים מהמודל')}
 GROUP_RX = [('mail', re.compile(r'מייל|דואר')), ('calendar', re.compile(r'התנגשו|חפיפ|חופפ')),
             ('promise', re.compile(r'הבטח|דברים שאמרתי|מה שאמרתי')),
             ('prep', re.compile(r'הכנ[הות]|תורים|נסיעות|טיסות|מתי לצאת')),
@@ -177,6 +179,42 @@ def _countable(ev: dict) -> bool:
     return True
 
 
+_KIND_WORDS = {'שיעור', 'תרגיל', 'תרגול', 'הרצאה', 'מעבדה', 'סדנה', 'סמינר'}
+
+
+def _hops(timed: list[tuple]) -> list[tuple]:
+    """Back-to-back on-campus sessions whose walk doesn't fit the break (agent/campus): [(e1, b1, e2, a2, hop)]."""
+    from agent import campus
+    out = []
+    for (a1, b1, e1), (a2, b2, e2) in zip(timed, timed[1:]):
+        if a1.date() != a2.date() or _place(e1) != 'campus' or _place(e2) != 'campus':
+            continue
+        hop = campus.tight(b1, e1.get('location') or '', a2, e2.get('location') or '')
+        if hop:
+            out.append((e1, b1, e2, a2, hop))
+    return out
+
+
+def campus_notes(now: datetime, timed: list[tuple]) -> list[dict]:
+    """19/11 improvement 14: one note per day with the hops across the campus he can't walk in time, said once per
+    weekly pattern (the key is the weekday + times + buildings, so next Tuesday's same hops stay quiet)."""
+    by_day: dict = {}
+    for e1, b1, e2, a2, hop in _hops([x for x in timed if x[0] >= now - timedelta(hours=3)]):
+        if now <= a2 <= now + HORIZON:
+            by_day.setdefault(a2.date(), []).append((e1, b1, e2, a2, hop))
+    out = []
+    for day, hops in sorted(by_day.items()):
+        a = hops[0][3]
+        lines = [f"• {a2:%H:%M} *{_short(e1)}* ({hop['frm']}) → *{_short(e2)}* ({hop['to']}): ~{hop['walk']} דק׳ הליכה, "
+                 + ('בלי הפסקה' if hop['gap'] <= 0 else f"הפסקה של {hop['gap']} דק׳") for e1, _b, e2, a2, hop in hops]
+        key = 'walk|' + '|'.join(f"{a2:%a%H%M}{hop['frm']}>{hop['to']}" for _e, _b, _e2, a2, hop in hops)
+        out.append({'key': key, 'kind': 'travel',
+                    'text': f'🚶 {_day(a, now)} יש מעברים צפופים בקמפוס:\n' + '\n'.join(lines) +
+                            '\nכדאי לצאת כמה דקות לפני סוף השיעור. רוצה שורה "כדאי לצאת עכשיו" כשצריך? '
+                            'כתוב "תזכיר לי לצאת בין שיעורים".'})
+    return out
+
+
 # ── the noticers (pure) ─────────────────────────────────────────────────────
 
 def calendar_notes(now: datetime, events: list[dict], partner: str = 'בת הזוג') -> list[dict]:
@@ -195,9 +233,11 @@ def calendar_notes(now: datetime, events: list[dict], partner: str = 'בת הז�
                 break
             if not (a1 < b2 and a2 < b1) or a2 < now or a1 > now + HORIZON:
                 continue
-            if _is_lesson(e1) and _is_lesson(e2):          # two of his own groups — the timetable's business
-                continue
             if _words(_title(e1)) == _words(_title(e2)):   # the same thing twice (two calendars)
+                continue
+            if (_is_lesson(e1) or _is_lesson(e2)) and _span(e1)[0] == _span(e2)[0] and                     _words(_short(e1)) - _KIND_WORDS & _words(_short(e2)) - _KIND_WORDS:
+                continue                                   # 19/11 one session, two calendars ("📘 מיקרו — שיעור" / "(קב׳ 03)")
+            if _is_lesson(e1) and _is_lesson(e2):          # two of his own groups — the timetable's business
                 continue
             pair = tuple(sorted((_rid(e1), _rid(e2))))
             if pair in seen_pairs:
@@ -230,6 +270,7 @@ def calendar_notes(now: datetime, events: list[dict], partner: str = 'בת הז�
         weekly = e1.get('recurringEventId') and e2.get('recurringEventId')
         out.append({'key': f'travel|{_rid(e1)}|{_rid(e2)}' + ('' if weekly else f'|{a2:%Y-%m-%d}'),
                     'kind': 'travel', 'text': text})
+    out += campus_notes(now, timed)
     lessons = sorted(((s, ev) for ev in events if _is_lesson(ev) for s, _e, allday in [_span(ev)]
                       if s and not allday and not MARKER_RX.search(_title(ev))), key=lambda x: x[0])
     for ev in events:                                         # a trip with lessons inside it
@@ -563,18 +604,24 @@ def waiting_notes(now: datetime, jobs: dict | None) -> list[dict]:
     return out
 
 
+def _grade_notes(now: datetime, recs: list[dict]) -> list[dict]:
+    from agent import grades
+    return grades.notes(now, recs)
+
+
 def notice(now: datetime, events: list[dict] | None = None, mails: list[dict] | None = None,
            sent_subjects: list[str] | None = None, convo: list[dict] | None = None,
            reminders: list[dict] | None = None, tasks: list[dict] | None = None, study: dict | None = None,
            partner: str = 'בת הזוג', closed: list[dict] | None = None, jobs: dict | None = None,
-           obligations: dict | None = None) -> list[dict]:
+           obligations: dict | None = None, grades: list[dict] | None = None) -> list[dict]:
     """Everything worth starting a conversation about right now, most important first. Pure."""
     from agent import obligations as ob, study_push
     notes = (calendar_notes(now, events or [], partner) + mail_notes(now, mails or [], sent_subjects, tasks, closed)
              + promise_notes(now, convo or [], reminders, tasks, closed)
              + secretary_notes(now, events or [], partner, closed) + waiting_notes(now, jobs)
              + (study_notes(now, events or [], study) if study_push.on() else [])
-             + (ob.notes(now, obligations) if obligations else []))
+             + (ob.notes(now, obligations) if obligations else [])
+             + (_grade_notes(now, grades) if grades else []))
     for n in notes:
         n.setdefault('buttons', [])
         n['prio'] = n['prio'] if isinstance(n.get('prio'), int) else PRIO.get(n['kind'], 5)
@@ -652,6 +699,11 @@ def pick(notes: list[dict], st: dict, now: datetime, quiet=None) -> list[dict]:
     recent_study = any(k.startswith('study|') and v >= (now - STUDY_EVERY).isoformat() for k, v in st['said'].items())
     fresh = [n for n in notes if n['key'] not in st['said'] and not (n['kind'] == 'study' and recent_study)
              and not muted(st, group_of(n['kind']), now)]
+    if fresh and quiet is None:                       # 17/11 his rhythm (agent/rhythm): live only, tests pass `quiet`
+        from agent import rhythm
+        r = rhythm.load(now)
+        fresh = [n for n in fresh if not rhythm.backed_off(group_of(n['kind']), st['said'], now, r)
+                 and not rhythm.hold(n['kind'], n.get('prio', PRIO.get(n['kind'], 3)), now, r)]
     if not fresh:
         return []
     n = dict(fresh[0])
@@ -673,7 +725,39 @@ def _events(now: datetime) -> list[dict]:
     out = []
     for i in range(4):
         out += gcal.events_on((now + timedelta(days=i)).date())
-    return out
+    return with_timetable(now, out)
+
+
+def with_timetable(now: datetime, events: list[dict], sessions=None, cancelled=None) -> list[dict]:
+    """19/11 improvement 14: the calendar + his sessions from the university site that it doesn't have (agent/fastpath
+    sessions: the my.tau cache with the university's changes), without the sessions the university cancelled — a
+    cancelled tutorial is no clash and no walk."""
+    try:
+        if cancelled is None:
+            from agent import schedule
+            cancelled = schedule.cancelled
+        events = [ev for ev in events if not (_is_lesson(ev) and cancelled(ev))]
+    except Exception as e:
+        print(f'  ⚠️ proactive cancelled: {e!r}'[:200])
+    try:
+        if sessions is None:
+            from agent import fastpath
+            sessions = fastpath.sessions(now)
+    except Exception as e:
+        print(f'  ⚠️ proactive timetable: {e!r}'[:200])
+        return events
+    have = {(_span(ev)[0], frozenset(_words(_short(ev)) - _KIND_WORDS)) for ev in events if _is_lesson(ev)}
+    starts = {s for s, _w in have}
+    for s in sessions or []:
+        if (s.get('override') or {}).get('status') == 'cancelled' or s['at'] > now + timedelta(days=4):
+            continue
+        cw = _words(s['course']) - _KIND_WORDS
+        if s['at'] in starts and any(st == s['at'] and (w & cw or not w) for st, w in have):
+            continue
+        events.append({'id': f"tau|{s['at']:%Y%m%d%H%M}|{s.get('ck') or ''}", 'summary': f"{s['course']} — {s['kind']}",
+                       'start': {'dateTime': s['at'].isoformat()}, 'end': {'dateTime': s['end'].isoformat()},
+                       'location': s.get('place') or '', '_cal_kind': 'lessons'})
+    return events
 
 
 def _mails(now: datetime) -> list[dict]:
@@ -776,6 +860,11 @@ def gather(chat: str, now: datetime, st: dict | None = None) -> dict:
         data['obligations'] = obligations.refresh(now, chat)
     except Exception as e:
         print(f'  ⚠️ proactive obligations: {e!r}'[:200])
+    try:                                              # 19/11 a grade / the grader's feedback that came back (agent/grades)
+        from agent import grades
+        data['grades'] = grades.pending() if grades.enabled() else []
+    except Exception as e:
+        print(f'  ⚠️ proactive grades: {e!r}'[:200])
     data['partner'] = os.environ.get('WA_PARTNER_NAME', 'בת הזוג')
     return data
 
@@ -815,6 +904,12 @@ def tick(now: datetime | None = None, state_path: Path | None = None, gather_fn=
                     obligations.mark_said(n, now)
                 except Exception as e:
                     print(f'  ⚠️ obligations mark: {e!r}'[:200])
+            if n.get('kind') == 'grade_feedback':     # 19/11 its items are said (agent/grades' log)
+                try:
+                    from agent import grades
+                    grades.mark_said(n, now)
+                except Exception as e:
+                    print(f'  ⚠️ grades mark: {e!r}'[:200])
         from agent.core import Out
         for n in picked:
             print(f"  💡 proactive: {n['key'][:80]}")
@@ -918,6 +1013,9 @@ def answer(chat: str, op: str, oid: str, now: datetime | None = None, path: Path
             return 'לא מצאתי את זה ברשימה — כנראה כבר נסגר.', ''
         return (f'✅ מעולה — סימנתי ש{title} נעשה. לא אזכיר יותר.' if op == 'odone'
                 else f'🔕 בסדר — {title} לא רלוונטי, לא אזכיר יותר.'), ''
+    if op in ('awy', 'awn'):                            # 20/11 "are these your trip dates?" (agent/away)
+        from agent import away
+        return away.confirm(chat, o, op == 'awy', now=now), ''
     if op == 'draft':
         name = o.get('name') or ''
         return ('', f'תנסח לי ברכת יום הולדת קצרה וחמה ל{name}') if name else ('👍', '')

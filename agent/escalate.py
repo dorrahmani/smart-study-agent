@@ -93,6 +93,12 @@ def watch(chat: str, text: str, src: str, ref: str, now: datetime | None = None,
     d['items'].append({'id': secrets.token_hex(3), 'chat': chat, 'text': text.strip()[:300], 'src': src, 'ref': ref,
                        'sent': now.isoformat(timespec='seconds'),
                        'deadline': deadline.isoformat(timespec='minutes') if deadline else '', 'steps': []})
+    if path is None:                                            # 17/11 live: wait his usual answer time (agent/rhythm)
+        try:
+            from agent import rhythm
+            d['items'][-1]['wait'] = int(rhythm.nudge_after(now).total_seconds() // 60)
+        except Exception as e:
+            print(f'  ⚠️ escalation rhythm: {e!r}'[:200])
     d['days'][day] = d['days'].get(day, 0) + 1
     _save(d, path, now)
     return True
@@ -100,7 +106,10 @@ def watch(chat: str, text: str, src: str, ref: str, now: datetime | None = None,
 
 def _times(i: dict) -> tuple[datetime, datetime]:
     sent = datetime.fromisoformat(i['sent'])
-    nudge, alarm = sent + NUDGE_AFTER, sent + ALARM_AFTER
+    after = NUDGE_AFTER
+    if i.get('wait'):                                   # 17/11 his usual answer time then (agent/rhythm), 15–25 min
+        after = timedelta(minutes=max(15, min(25, int(i['wait']))))
+    nudge, alarm = sent + after, sent + ALARM_AFTER
     if i.get('deadline'):
         dl = datetime.fromisoformat(i['deadline'])
         alarm = min(alarm, max(dl - timedelta(minutes=10), sent + 2 * MIN_STEP))

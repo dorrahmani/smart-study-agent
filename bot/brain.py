@@ -539,7 +539,10 @@ def classify(message: str, history: str = '') -> dict[str, Any]:
 
     # Step 2: Ollama fallback (when Gemini fails/quota/network)
     # Slow on ARM CPU but free and offline. Better than returning fallback.
-    ollama_txt = _try_ollama(prompt)
+    # 19/11: not inside a chat turn whose Gemini is out, and only when the model is loaded — a cold qwen on the VM's
+    # CPU made the owner wait ~22-45 s for an 'ask' that then needed Gemini anyway (utils/llm_health.ollama_ok)
+    from utils import llm_health
+    ollama_txt = _try_ollama(prompt, timeout=15) if llm_health.ollama_ok() else None
     if ollama_txt:
         try:
             m = re.search(r'\{.*\}', ollama_txt, re.DOTALL)

@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 
 
 _REASK: set[str] = set()                          # chats with another open numbered question after an answer
+_ANSWERED: set[str] = set()                       # 19/11 chats that just answered a question: what waited goes out now
 
 
 def report_job(job: dict) -> None:
@@ -95,7 +96,9 @@ def to_in_bridge(m: dict) -> 'In':
     if kind == 'text':
         meta: dict = {}
         # 05/11: a group confirms nothing, from anyone: no digit there answers a question
-        payload = None if m.get('group') else outbox.take_option(chat, m.get('text', ''), meta=meta)
+        # 19/11 a reply that quotes a question answers that question (reply_to = the quoted WhatsApp id)
+        payload = None if m.get('group') else outbox.take_option(chat, m.get('text', ''), meta=meta,
+                                                                 reply_to=m.get('reply_to') or None)
         if not payload and (m.get('text') or '').strip().strip('.').isdigit():
             try:                                   # 08/10: a "1" went unanswered — record why, for the next review
                 allo = json.loads(outbox.OPTIONS.read_text(encoding='utf-8'))
@@ -114,6 +117,8 @@ def to_in_bridge(m: dict) -> 'In':
         if payload:
             if meta.get('more'):                          # another question is still open → ask it again after this
                 _REASK.add(chat)
+            if not payload.startswith('oq:'):
+                _ANSWERED.add(chat)
             # an answer to an older question → the reply names it (In.text carries it to the agent)
             return In(chat, 'button', payload=payload, channel='whatsapp', role=role,
                       text=meta.get('q', '') if meta.get('stale') else '', group=bool(m.get('group')))
@@ -162,9 +167,12 @@ def to_in(m: dict) -> 'In':
     return In(sender, 'text', text='', reply_to=reply_to)
 
 
-def send_outs_bridge(chat: str, outs: list) -> bool:
+def send_outs_bridge(chat: str, outs: list, busy: str = 'park') -> bool:
+    """busy: what a question does when another one is open (whatsapp/outbox.send_options). A turn's reply 'park's the
+    open one behind it; a second question in the same reply waits for the first ('hold')."""
     from whatsapp import outbox
     ok = True
+    asked = False
     for o in outs:
         if o.kind == 'document' and o.path:
             mid = outbox.send_document(chat, o.path, o.text)
@@ -173,7 +181,8 @@ def send_outs_bridge(chat: str, outs: list) -> bool:
                 register_sent(o.register_practice[0], o.register_practice[1], chat, mid)
             ok = ok and bool(mid)
         elif o.kind == 'buttons':
-            ok = outbox.send_options(chat, o.text, o.buttons) and ok
+            ok = outbox.send_options(chat, o.text, o.buttons, busy='hold' if asked else busy) and ok
+            asked = True
         else:
             ok = outbox.send_text(chat, o.text) and ok
     return ok
@@ -210,21 +219,49 @@ def process_file(path: Path) -> bool:
         if handled:
             from agent.core import Out
             with outbox.group_reply():
+                if texts and m.get('role') == 'group_friend':      # 17/11 the answer quotes the friend's message
+                    q = {'id': m.get('id', ''), 'participant': m.get('participant', ''), 'text': (m.get('text') or '')[:200]}
+                    return all(outbox.send_reply(m['chat'], t, q) for t in texts)
                 return send_outs(m['chat'], [Out('text', t) for t in texts]) if texts else True
     wa.record_inbound()
+    if not m.get('group') and trusted_role(m) == 'owner':      # 19/11 he's here (agent/catchup: "מה פספסתי")
+        try:
+            from agent import catchup
+            catchup.note_active(str(m.get('chat') or m.get('from') or ''))
+        except Exception as e:
+            print(f'  ⚠️ catchup activity: {e!r}'[:200])
     if m.get('id') and not m.get('bridge'):
         wa.mark_read(m['id'])
+    if m.get('type') == 'reaction':                    # 17/11 a reaction: 👍/👎 on an answer (agent/feedback), no model
+        from agent import feedback
+        from agent.core import Out
+        said = feedback.on_reaction(m)
+        return send_outs(m['chat'], [Out('text', said)]) if said else True
     msg = to_in(m)
     from agent.core import Out, slow_notice
-    if not m.get('group') and (note := slow_notice(msg)):
-        send_outs(msg.sender, [Out('text', note)])
+    from agent import interim
+    if m.get('group'):
+        interim.end()
+    else:                                              # 17/11 at most one "רגע, בודק…" line per turn (agent/interim)
+        interim.begin(msg.sender)
+        if note := slow_notice(msg):
+            interim.say(note, send=lambda chat, t: send_outs(chat, [Out('text', t)]))
     from utils.budget import acting_for
-    with acting_for(msg.role):
-        outs = handle(msg)
+    from utils import latency
+    try:
+        with acting_for(msg.role), latency.turn(msg.role, msg.channel):   # 18/11 data/latency_summary.json
+            outs = handle(msg)
+    finally:
+        interim.end()
     if m.get('group'):
         with outbox.group_reply():
             ok = send_outs(msg.sender, group_mode.safe_outs(outs), m.get('id'))
     else:
+        try:                                           # 17/11 a long answer, a few times a day: "👍/👎 כריאקשן"
+            from agent import feedback
+            outs = feedback.offer(msg, outs, m.get('id', ''))
+        except Exception as e:
+            print(f'  ⚠️ feedback offer: {e!r}'[:200])
         ok = send_outs(msg.sender, outs, m.get('id'))
     if msg.sender in _REASK:
         _REASK.discard(msg.sender)
@@ -310,6 +347,68 @@ def proactive_outs() -> list:
         return []
 
 
+def approvals_outs() -> list:
+    """19/11 (agent/approvals): a pending ✅ a day old → one reminder; two days later → expired, with a note."""
+    from agent import approvals
+    return approvals.run()
+
+
+def load_radar_outs() -> list:
+    """19/11 (agent/load_radar): a week in the next 10 days with 3+ deadlines → one heads-up per week."""
+    from agent import load_radar
+    from agent.core import Out
+    from whatsapp import outbox
+    chat = outbox.owner_chat()
+    return [(chat, Out('text', t)) for t in load_radar.tick()] if chat else []
+
+
+def ladder_outs() -> list:
+    """20/11 (agent/deadline_ladder): 7 days / 3 / 1 / the morning / 6h / 2h before a deadline, until it's submitted."""
+    from agent import deadline_ladder
+    return deadline_ladder.tick()
+
+
+def away_outs() -> list:
+    """20/11 (agent/away): a trip / busy period ahead → one question if unsure, one battle plan, what he missed."""
+    from agent import away
+    return away.tick()
+
+
+def catchup_batch(ticks, owner: str, now=None, held_path=None, activity_path=None) -> tuple[list, bool]:
+    """19/11 (agent/catchup, "מה פספסתי"): run the batch's ticks; while the owner is away a non-urgent message is held
+    instead of sent; when he's back the held ones come as ONE digest at the head of the batch, their questions after
+    it (through the same budget / one-at-a-time rules below). → (batch, away)."""
+    from datetime import datetime
+    from agent import catchup
+    from agent.core import Out
+    now = now or datetime.now()
+    batch = []
+    for tick in ticks:
+        src = getattr(tick, '__name__', '')
+        for chat, out in _one_tick(tick):
+            try:
+                if catchup.should_hold(chat, out, src, owner, now, activity_path):
+                    catchup.hold(chat, out.kind, out.text, out.buttons, src, path=held_path)
+                    print(f'  📥 held for the catch-up ({src}): {out.text[:50]!r}')
+                    continue
+            except Exception as e:
+                print(f'  ⚠️ catchup hold: {e!r}'[:200])
+            batch.append((chat, out))
+    away = False
+    if owner:
+        try:
+            away = catchup.away(owner, now.timestamp(), activity_path)
+            digest, items = catchup.release(owner, now, held_path, activity_path)
+            if digest:
+                batch.insert(0, (owner, Out('text', digest)))
+            for i in items:
+                batch.append((owner, Out('buttons', i['text'], buttons=[tuple(b) for b in i['buttons']])
+                              if i['kind'] == 'buttons' else Out('text', i['text'])))
+        except Exception as e:
+            print(f'  ⚠️ catchup release: {e!r}'[:200])
+    return batch, away
+
+
 def main() -> int:
     _no_dump()
     try:
@@ -327,6 +426,11 @@ def main() -> int:
         install()
     except Exception as e:
         print(f'gemini-sub not installed: {e}')
+    try:                                        # 18/11 outermost: every model call's wall time, per turn (utils/latency)
+        from utils.latency import install_timer
+        install_timer()
+    except Exception as e:
+        print(f'  ⚠️ latency timer not installed: {e!r}'[:200])
     from whatsapp import client as wa, outbox
     if not (wa.configured() or outbox.enabled()):
         print('WhatsApp not configured (WA_TRANSPORT=bridge, or WA_TOKEN / WA_PHONE_NUMBER_ID / WA_OWNER) — exiting')
@@ -339,14 +443,26 @@ def main() -> int:
         group_mode.sync_gate()
     except Exception as e:
         print(f'  ⚠️ group gate failed: {e!r}'[:200])
-    last_poll = last_nudge = last_exam = last_advance = last_esc = 0.0
+    last_poll = last_nudge = last_exam = last_advance = last_esc = last_ladder = 0.0
     while True:
         run_once(spool)
+        while _ANSWERED:                            # 19/11 a question that waited for this answer goes out right after it
+            try:                                    # (quiet hours hold it for the morning tick, like any proactive one)
+                from utils.notify import in_quiet_hours as _q0
+                chat = _ANSWERED.pop()
+                if not _q0():
+                    outbox.release_deferred(only=chat)
+            except Exception as e:
+                print(f'  ⚠️ release after an answer failed: {e!r}'[:200])
         try:                                        # 05/11 debates in groups: the clock, and a held reply
             from agent import group_mode as _gm
             with outbox.group_reply():
-                for chat, text in _gm.tick():
-                    outbox.send_text(chat, text)
+                for item in _gm.tick():
+                    chat, text = item[0], item[1]
+                    if len(item) > 2 and item[2]:          # a friend's held question: the answer quotes it
+                        outbox.send_reply(chat, text, item[2])
+                    else:
+                        outbox.send_text(chat, text)
         except Exception as e:
             print(f'  ⚠️ group tick failed: {e!r}'[:200])
         try:                                        # scheduled review sessions (agent/tutor.py)
@@ -370,10 +486,16 @@ def main() -> int:
                 last_exam = time.time()
                 from agent import core as _c3
                 # 03/11 proactive_outs = the noticing layer (agent/proactive.py, SSA_PROACTIVE=1); study ticks only with SSA_STUDY
-                batch = [x for tick in tick_list(_c3) for x in _one_tick(tick)]
+                ticks = tuple(tick_list(_c3)) + (approvals_outs, load_radar_outs)   # 19/11 a ✅ that never came · a week with 3+ deadlines
+                ticks += (ladder_outs, away_outs)            # 20/11 deadlines pushed until submitted · trips planned ahead
+                batch, away = catchup_batch(ticks, outbox.owner_chat())
                 for chat, out in _c3.merge_outs(batch):     # one message per chat per tick, not a burst
                     # asked to be nagged: his tasks, and (14/11) what he owes in Moodle until done — the proactive cap
                     # (≤3 a day) still holds; the 7-day same-text rule would drop the every-2-days quiz reminder
+                    from agent import noise         # 16/11 a kind he turned off ("תפסיק לשלוח לי דברים שלא רלוונטיים")
+                    if (nk := noise.blocked(out.text)):
+                        print(f'  🔕 {nk}: turned off by the owner — not sent')
+                        continue
                     nag = out.kind == 'buttons' and str(out.buttons[0][1]).startswith(('task:', 'sec:odone:'))
                     if out.kind == 'buttons' and not nag and outbox.already_asked(chat, out.text):
                         print(f'  ⏭️ proactive question already asked this week — not sending again')
@@ -390,25 +512,35 @@ def main() -> int:
                         outbox.defer_options(chat, out.text, out.buttons)   # one numbered question at a time
                     else:
                         send_outs_bridge(chat, [out])
-                outbox.release_deferred()                   # the next waiting question, once the last is answered
+                if not away:                                # 19/11 he's away: the waiting questions wait too
+                    outbox.release_deferred()               # the next waiting question, once the last is answered
         except Exception as e:
             print(f'  ⚠️ exam sync tick failed: {e}')
         try:                                        # due reminders (agent/life.py)
             from agent import life
             for rec, buttons in life.due_now():
                 outbox.send_options(rec['chat'], f"⏰ *תזכורת{' (🚨 חשוב)' if rec.get('important') else ''}:* "
-                                                 f"{rec['text']}", buttons)
+                                                 f"{rec['text']}", buttons, busy='letters')   # 19/11 it can't wait: א/ב
                 if rec.get('important'):                  # 11/11 no reaction → a nudge, then a calendar alarm
                     from agent import escalate
                     escalate.watch(rec['chat'], rec['text'], 'reminder', rec['id'])
         except Exception as e:
             print(f'  ⚠️ reminders tick failed: {e}')
+        try:                                        # 20/11 quiet hours: only the last 6 hours before a deadline wake him
+            from utils.notify import in_quiet_hours as _q3
+            if _q3() and time.time() - last_ladder > 60:
+                last_ladder = time.time()
+                from agent import deadline_ladder
+                for chat, out in deadline_ladder.urgent_outs():
+                    send_outs_bridge(chat, [out])
+        except Exception as e:
+            print(f'  ⚠️ ladder (quiet hours) failed: {e!r}'[:200])
         try:                                        # 11/11 what he marked important and didn't answer (agent/escalate)
             if time.time() - last_esc > 30:
                 last_esc = time.time()
                 from agent import escalate
                 for chat, text, buttons in escalate.tick():
-                    outbox.send_options(chat, text, buttons)
+                    outbox.send_options(chat, text, buttons, busy='letters')
         except Exception as e:
             print(f'  ⚠️ escalation tick failed: {e!r}'[:200])
         try:                                        # 03/11 the browser agent paused / finished (The owner asked — any hour)
@@ -417,7 +549,7 @@ def main() -> int:
                 if shot:
                     outbox.send_media(chat, shot, wait=0)
                 if buttons:
-                    outbox.send_options(chat, text, buttons)
+                    outbox.send_options(chat, text, buttons, busy='letters')     # it waits on him: can't be held
                 else:
                     outbox.send_text(chat, text)
         except Exception as e:

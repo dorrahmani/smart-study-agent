@@ -126,6 +126,14 @@ def audit(sender: str, action: str, detail: dict) -> None:
                                 'action': action, **detail}, ensure_ascii=False, default=str) + '\n')
     except OSError:
         pass
+    if action in OUTWARD_ACTIONS:                       # 19/11 journal: can't be undone, and "תבטל" says so
+        from agent import journal
+        to = detail.get('to') or ''
+        journal.record(sender, 'outward', f"{OUTWARD_ACTIONS[action]}{f' ל{to}' if to and '@' not in str(to) else ''}: "
+                                          f"\"{str(detail.get('text') or detail.get('subject') or '')[:60]}\"")
+
+
+OUTWARD_ACTIONS = {'message_sent': 'הודעה שנשלחה', 'email_sent': 'מייל שנשלח', 'contact_message': 'הודעה שנשלחה'}
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
@@ -145,9 +153,19 @@ def handle(msg: In, state_path: Path | None = None) -> list[Out]:
                     print(f'  ⚠️ escalation ack failed: {e!r}'[:200])
             from contextlib import nullcontext
             from utils.gemini_sub import api_only
-            with api_only() if any(h.get('others') for h in u.get('history') or []) else nullcontext():
-                outs = _soft_study_offer(msg, u, _route(msg, u, st))   # others' words in the history stay off the subscription agent
-                _remember_turn(msg, u, outs)
+            from agent import group_helper
+            if msg.kind == 'text' and not msg.forwarded and group_helper.REPORT_RX.fullmatch(msg.text or ''):
+                outs = [Out('text', group_helper.report())]           # 17/11 what the friends asked in their group:
+                _remember(u, 'user', msg.text.strip())                 # their words, so the turn is marked others'
+                _remember(u, 'bot', outs[0].text, others=True)
+            else:
+                with api_only() if any(h.get('others') for h in u.get('history') or []) else nullcontext():
+                    from agent import emergency           # 19/11 Gemini out / the month locked: answer from the data
+                    outs = emergency.run(msg, lambda: _soft_study_offer(msg, u, _route(msg, u, st)))   # others' words in the history stay off the subscription agent
+                    if not msg.group:                     # 17/11 dates / sessions / rooms checked against his data (no LLM)
+                        from agent import factcheck
+                        outs = factcheck.apply(outs)
+                    _remember_turn(msg, u, outs)
         elif msg.role == 'partner':
             outs = _partner(msg, u, st)
             _remember_turn(msg, u, outs)              # 09/11 "החתונה ב19:30" right after "ב22.11 בחתונה" got "באיזה תאריך?"
@@ -1428,6 +1446,8 @@ def _auto_edit(u: dict, p: dict, source: str, change: str = '', also: list | Non
     u['undo_cal'] = {'ts': datetime.now().isoformat(timespec='seconds'),
                      'items': [{'old': {k: o.get(k) for k in ('summary', 'location', 'start', 'end')}, 'new': n}
                                for o, n in done]}
+    from agent import journal                           # 19/11 the trusted auto-update: undone without a ✅
+    journal.record(outbox_owner(), 'cal_edit', ev.get('summary', ''), inverse={'items': u['undo_cal']['items']})
     audit(outbox_owner(), 'calendar_auto_edit', {'id': ev.get('id'), 'source': source[:80], 'patch': patch,
                                                  'also': len(also or [])})
     what = calendar_edit.describe(p).replace('\n', ' · ')
@@ -1621,10 +1641,50 @@ def _yes_closes(msg: 'In', u: dict, text: str) -> str | None:
     return f'✅ סגרתי: {what}. לא אזכיר יותר.'
 
 
+def _fast(msg: 'In', u: dict, text: str) -> list['Out'] | None:
+    """17/11 "מה הלוז שלי מחר" / "מתי ההגשה הבאה" / "איפה השיעור" — answered from the data, no Gemini (agent/fastpath).
+    The owner's own words in his private chat only, a whole short question, nothing open that it could be an answer to."""
+    if msg.role != 'owner' or msg.group or msg.forwarded or msg.kind != 'text' or msg.reply_to or u.get('quiz')             or (u.get('tutor') or {}).get('active') or u.get('await_email_to'):
+        return None
+    d = u.get('cal_draft_text')
+    if isinstance(d, dict) and (datetime.now() - datetime.fromisoformat(d.get('ts') or '2000-01-01')).total_seconds() < 900:
+        return None                                      # "מחר" may be the answer to the draft's "באיזה יום?"
+    from agent import fastpath
+    t0 = time.monotonic()
+    got = fastpath.answer(text, msg.sender)
+    if not got:
+        return None
+    audit(msg.sender, 'fastpath', {'intent': got[0], 'text': text[:80], 'ms': int((time.monotonic() - t0) * 1000)})
+    return [Out('text', got[1])]
+
+
+def _queue_questions(chat: str, items: list[dict]) -> None:
+    """Held questions (agent/catchup) back into the outbox's one-at-a-time queue — the daily budget asks again."""
+    from whatsapp import outbox
+    for q in items:
+        try:
+            buttons = [tuple(b) for b in q.get('buttons') or []]
+            nag = bool(buttons) and str(buttons[0][1]).startswith(('task:', 'sec:odone:'))
+            if not buttons or (not nag and outbox.already_asked(chat, q['text'])):
+                continue
+            outbox.defer_options(chat, q['text'], buttons, gated=False)
+        except Exception as e:
+            print(f'  ⚠️ catchup queue: {e!r}'[:200])
+
+
 def _plan_and_learn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
     """Goals / work shifts / the task page / "stop asking about this" (agent/planner, agent/learn, the outbox budget)."""
     from agent import learn, planner
     from whatsapp import outbox
+    if msg.role == 'owner' and not msg.forwarded and not msg.group:
+        from agent import catchup, journal              # 19/11 "מה פספסתי" / "תבטל את מה שעשית"
+        if (got := catchup.answer(msg.sender, text)) is not None:
+            audit(msg.sender, 'catchup', {'questions': len(got[1])})
+            _queue_questions(msg.sender, got[1])
+            return [Out('text', got[0])]
+        if (got := journal.route(msg.sender, text)) is not None:
+            audit(msg.sender, 'undo_asked', {'confirm': bool(got[1])})
+            return [Out('buttons', got[0], buttons=got[1])] if got[1] else [Out('text', got[0])]
     if UNDO_RX.match(text) and (undo := _undo_cal(u)) is not None:
         return undo
     from agent import loops
@@ -1662,6 +1722,19 @@ def _plan_and_learn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
     if UNMUTE_RX.search(text):
         n = outbox.unmute_all(msg.sender)
         return [Out('text', f'🔔 חוזר לשאול ({n} סוגי שאלות הושתקו).' if n else '🔔 שום דבר לא היה מושתק.')]
+    if msg.role == 'owner' and not msg.forwarded and not msg.group:
+        from agent import noise                          # 16/11 "תפסיק לשלוח לי דברים שלא רלוונטיים": about what was sent
+        quoted = ''
+        if msg.reply_to and msg.channel == 'whatsapp':
+            try:
+                quoted = outbox.quoted_text(msg.sender, msg.reply_to)
+            except Exception:
+                quoted = ''
+        if (said := noise.handle(msg.sender, text, quoted)) is not None:
+            audit(msg.sender, 'noise_feedback', {'text': text[:120], 'buttons': [b[1] for b in said[1]]})
+            return [Out('buttons', said[0], buttons=said[1])] if said[1] else [Out('text', said[0])]
+        if (said := noise.back(text)) is not None:
+            return [Out('text', said)]
     if msg.role == 'owner' and not msg.forwarded:          # 11/11 "פחות" / "תפסיק עם המיילים" / "תחזיר את ההכנות"
         from agent import proactive
         if (said := proactive.commands(text)) is not None:
@@ -1795,6 +1868,20 @@ def _open_mails(chat: str, rows: list[dict], now: datetime) -> list[dict]:
         tau_mail.sender_name(r.get('from', '')), r.get('id', ''), r.get('thread', ''), now, 'digest')]
 
 
+def schedule_changed_text(rows: list[dict]) -> str:
+    """"🗓️ עדכנתי בלו״ז שלך: שלישי 17/11 11:00 תרגיל הסתברות — ❌ מבוטל (הודעה במודל)"."""
+    from agent import schedule
+    from config.paths import COURSE_NAMES
+    from integrations.gcal import WEEKDAY_HE
+    lines = []
+    for o in rows[:6]:
+        d = date.fromisoformat(o['date'])
+        head = schedule.suffix({**o, 'note': ''})
+        lines.append(f"• {WEEKDAY_HE[d.weekday()]} {d:%d/%m} {o['start']} {schedule.KIND_HE.get(o['kind'], '')} "
+                     f"{COURSE_NAMES.get(o['ck'], o['ck'])}{head}")
+    return '🗓️ *עדכנתי בלו״ז שלך:*\n' + '\n'.join(lines)
+
+
 @api_only()                                             # mail is anyone's words: not for the subscription agent
 def mail_tick(state_path: Path | None = None, now: datetime | None = None) -> list[tuple[str, 'Out']]:
     """Deliver the university-mail queue (scripts/tau_mail_watch.py fills it). Called outside quiet hours only."""
@@ -1821,6 +1908,15 @@ def mail_tick(state_path: Path | None = None, now: datetime | None = None) -> li
             r['level'] = 'normal' if r['level'] == 'urgent' else r['level']
             r['lesson_change'] = ''                     # another group's lesson: no calendar question either
             r['dated'] = ''
+    changed = []                                        # 16/11 his schedule knows the change, ✅ or not (agent/schedule)
+    for r in new:
+        try:
+            from agent import schedule
+            changed += schedule.from_update(r, None if r.get('ref') else now.date())
+        except Exception as e:
+            print(f'  ⚠️ schedule override: {e!r}'[:200])
+    if changed:
+        out.append((chat, Out('text', schedule_changed_text(changed))))
     for r in new:                                       # 02/11 "something to do by a date" → calendar + nudges till ✅
         if r.get('task') and r.get('task_due') and r['level'] != 'low' and tau_mail.official(r):
             try:                                        # 07/11 audit: others' mail gets no calendar entry of its own
@@ -1834,6 +1930,15 @@ def mail_tick(state_path: Path | None = None, now: datetime | None = None) -> li
                     r['dated'] = ''                     # 05/11 a task of this thread exists, open or closed
             except Exception as e:
                 print(f'  ⚠️ mail task: {e!r}'[:200])
+    try:                                                # 16/11 a mail that looks like the answer he's waiting for
+        from agent import open_items
+        for rec, m in open_items.answered(chat, new):
+            what = rec.get('text', '').replace(open_items.TRACK_PREFIX, '')
+            out.append((chat, Out('buttons', f"📬 נראה שהגיעה תשובה לגבי *{what[:90]}*:\n"
+                                             f"\"{(m.get('subject') or '')[:120]}\" (מ{tau_mail.sender_name(m.get('from', ''))})\n\nלסגור?",
+                                  buttons=[('✅ כן, נסגר', f"oi:done:r:{rec['id']}"), ('⏳ עוד לא', 'noop:r')])))
+    except Exception as e:
+        print(f'  ⚠️ waiting answered: {e!r}'[:200])
     urgent = [r for r in new if r['level'] == 'urgent']
     pending += [r for r in new if r['level'] != 'urgent']
     if urgent:
@@ -2088,6 +2193,15 @@ def _known_details(chat: str, about: str, days: int = 45, path: Path | None = No
                 rows.append((score, r.get('ts', ''), said[:1500]))
     except OSError:
         pass
+    try:                                                   # 16/11 the kept files (agent/my_files): summary + identifiers
+        from agent import my_files
+        for rec in my_files.search(chat, about, k=3):
+            said = f"📎 *{rec.get('name', '')}*\n{rec.get('summary', '')}\n{rec.get('keys', '')}"
+            score = len(want & set().union(*open_items._words(said))) if open_items._words(said) else 0
+            if score >= 2 and str(rec.get('ts', '')) >= cut[:16] and not any(said[:200] in s for _, _, s in rows):
+                rows.append((score + 1, rec.get('ts', ''), said[:1500]))
+    except Exception as e:
+        print(f'  ⚠️ my_files details: {e!r}'[:160])
     facts = [f for f in life.facts(chat) if open_items._words(f) and want & set().union(*open_items._words(f))][-5:]
     best = sorted(rows, key=lambda x: (x[0], x[1]))[-2:]
     if not best and not facts:
@@ -2162,7 +2276,7 @@ def _coord_owner(msg: 'In', u: dict, text: str, st: dict) -> list['Out'] | None:
             return _coord_act(hit[0], t, st, reply_to_contact=False)
     if COORD_RX.search(text):
         return _coord_draft(msg, u, text)
-    if (m := CAN_MSG_RX.match(text)):                         # "אתה יכול לשלוח הודעה לאופק?" → yes, what to say?
+    if (m := CAN_MSG_RX.match(text)):                         # "אתה יכול לשלוח הודעה לפלוני?" → yes, what to say?
         name = m.group(1).strip()
         u['coord_compose'] = {'name': name, 'ts': datetime.now().isoformat(timespec='seconds')}
         return [Out('text', f'✉️ כן. מה לכתוב ל{name}?')]
@@ -2195,7 +2309,7 @@ def _coord_act(tid: str, t: dict, st: dict, reply_to_contact: bool = True) -> li
             pid = secrets.token_hex(4)
             ou.setdefault('pending', {})[pid] = {'events': [cal], 'ts': datetime.now().isoformat(timespec='seconds')}
             outbox.send_options(owner, f"{gcal.describe(cal)}\n\nלהוסיף ליומן?",
-                                [('✅ הוסף', f'cal:ok:{pid}'), ('❌ לא', f'cal:no:{pid}')])
+                                [('✅ הוסף', f'cal:ok:{pid}'), ('❌ לא', f'cal:no:{pid}')], busy='hold')
     elif step['action'] == 'ask_owner':
         t['status'] = 'waiting_owner'
         last = next((x for w, x in reversed(t['log']) if w == 'them'), '')
@@ -2254,6 +2368,9 @@ EVREM_ALL = re.compile(r'(?:תזכיר|תזכירי)\s+לי\s+(.{0,25}?)\s*לפ�
 EVREM_OFF = re.compile(r'(?:בלי|תפסיק|תבטל|בטל)\s+(?:את\s+)?(?:ה)?תזכורות\s+(?:ל|על\s+)?(?:ה)?אירועים|תפסיק להזכיר לי על אירועים')
 EVREM_ON = re.compile(r'(?:תחזיר|תפעיל)\s+(?:את\s+)?(?:ה)?תזכורות\s+(?:ל|על\s+)?(?:ה)?אירועים')
 EVREM_NONE = re.compile(r'^\s*בלי\s+תזכורת\s+(?:ל|על\s+)(.+?)\s*[.!?]*$')
+# 19/11 improvement 14: the "כדאי לצאת עכשיו" line before a session across the campus (off unless he says so)
+LEAVE_ON = re.compile(r'^\s*(?:תזכיר\s+לי\s+(?:מתי\s+)?לצאת\s+בין\s+(?:ה)?שיעורים|תפעיל\s+(?:את\s+)?(?:ה)?(?:תזכורת|שורת)\s+(?:ה)?יציאה)\s*[.!]*\s*$')
+LEAVE_OFF = re.compile(r'^\s*(?:בלי|תפסיק|תבטל|די)\s+(?:עם\s+)?(?:את\s+)?(?:ה)?(?:תזכור(?:ת|ות)\s+(?:ה)?יציאה|כדאי\s+לצאת(?:\s+עכשיו)?|להזכיר\s+לי\s+לצאת)\s*[.!]*\s*$')
 
 
 def _evrem_find(what: str):
@@ -2270,6 +2387,13 @@ def _event_reminder_cmd(text: str) -> list['Out'] | None:
     'בלי תזכורות לאירועים' · 'בלי תזכורת למסעדה'. None → not about a calendar event (life.py reminders)."""
     from agent import event_reminders as er
     from integrations import gcal
+    if LEAVE_ON.match(text):
+        er.set_setting(leave=True)
+        return [Out('text', '🚶 סגור. לפני שיעור שצריך ללכת אליו מבניין אחר בלי מספיק הפסקה, אשלח "כדאי לצאת עכשיו". '
+                            '"בלי תזכורת יציאה" כדי להפסיק.')]
+    if LEAVE_OFF.match(text):
+        er.set_setting(leave=False)
+        return [Out('text', '🔕 בלי "כדאי לצאת עכשיו".')]
     if EVREM_OFF.search(text):
         er.set_setting(on=False)
         return [Out('text', '🔕 לא אזכיר יותר לפני אירועים ביומן (תזכורות שביקשת במפורש — כן). "תחזיר תזכורות לאירועים" כדי להחזיר.')]
@@ -2924,8 +3048,8 @@ def _offer_message(u: dict, to_role: str, body: str, from_name: str, redo: bool 
         return [Out('text', 'אין לי למי לשלוח את זה כרגע.')]
     pid = secrets.token_hex(3)
     text = f'💬 {from_name}: {body.strip()}'
-    u.setdefault('msgs', {})[pid] = {'to': to, 'text': text, 'ts': datetime.now().isoformat(timespec='seconds')}
     who = OWNER_NAME if to_role == 'owner' else PARTNER_NAME
+    u.setdefault('msgs', {})[pid] = {'to': to, 'text': text, 'who': who, 'ts': datetime.now().isoformat(timespec='seconds')}
     buttons = [('📤 שלח', f'msg:send:{pid}'), ('❌ לא', f'msg:no:{pid}')]
     if redo:
         buttons.insert(1, ('✏️ נוסח אחר', f'msg:redo:{pid}'))
@@ -2976,14 +3100,24 @@ def _confirm_action(msg: In, u: dict, p: str) -> list[Out]:
                 print(f'  ⚠️ series edit failed: {e}')
         audit(msg.sender, 'calendar_edit', {'id': ev.get('id'), 'from': ev.get('summary'), 'patch': item['patch'],
                                             'also': len(item.get('also') or [])})
+        from agent import journal
+        journal.record(msg.sender, 'cal_edit', ev.get('summary', ''), confirm=True, inverse={'items': [
+            {'old': {k: ev.get(k) for k in ('summary', 'location', 'start', 'end')}, 'new': {**new, '_cal': ev.get('_cal', 'primary')}}]})
         return [Out('text', f"✅ עודכן: {new.get('summary', '')} — {gcal.when_text(new)}"
                             + (f" · 📍 {new['location']}" if new.get('location') else ''))]
     if item['kind'] == 'move':
-        gcal.move_event(ev, date.fromisoformat(item['day']))
+        moved = gcal.move_event(ev, date.fromisoformat(item['day']))
         audit(msg.sender, 'calendar_move', {'id': ev.get('id'), 'title': ev.get('summary'), 'to': item['day']})
+        old_day = str((ev.get('start') or {}).get('dateTime') or (ev.get('start') or {}).get('date') or '')[:10]
+        if old_day and isinstance(moved, dict) and moved.get('id'):
+            from agent import journal
+            journal.record(msg.sender, 'cal_move', ev.get('summary', ''), confirm=True,
+                           inverse={'event': {**moved, '_cal': ev.get('_cal', 'primary')}, 'day': old_day})
         return [Out('text', f"✅ הועבר: {ev.get('summary', '')} → {date.fromisoformat(item['day']):%d/%m}")]
     gcal.delete_event(ev['id'], calendar=gcal.cal_of(ev))
     audit(msg.sender, 'calendar_delete', {'id': ev.get('id'), 'title': ev.get('summary')})
+    from agent import journal
+    journal.record(msg.sender, 'cal_delete', ev.get('summary', ''))
     return [Out('text', f"🗑️ נמחק מהיומן: {ev.get('summary', '')}")]
 
 
@@ -3148,8 +3282,8 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
             return outs
         return [Out('text', f'🤔 לא בטוח למה "{text.strip()}" מתייחס — השאלה עם האפשרויות כבר לא פעילה. '
                             'תכתוב במילים מה רצית?')]
-    if msg.kind == 'text' and ('השב במספר' in text or text.startswith('↩️ *עוד שאלה פתוחה')):
-        # 24/10: The owner pasted the bot's own question back (its "1" had expired) → it was read as a link to summarise
+    if msg.kind == 'text' and ('השב במספר' in text or 'השב באות' in text or text.startswith('↩️ *עוד שאלה פתוחה')):
+        # 24/10: the owner pasted the bot's own question back (its "1" had expired) → it was read as a link to summarise
         from whatsapp import outbox
         live = outbox.options_open(msg.sender) or bool(outbox._open_list(
             json.loads(outbox.OPTIONS.read_text(encoding='utf-8')) if outbox.OPTIONS.exists() else {}, msg.sender))
@@ -3165,20 +3299,41 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
             return [Out('text', feedback.record(u, text))]
         if (fb := feedback.add_comment(u, text)) is not None:
             return [Out('text', fb)]
+        if msg.role == 'owner' and not msg.group and feedback.is_never_again(text):   # 16/11 "יופי שלא יקרה שוב"
+            said = feedback.never_again(list(u.get('history') or []), text)
+            audit(msg.sender, 'never_again', {'text': text[:120]})
+            return [Out('text', said)]
         try:                                                   # "לא, התכוונתי…" / the same question again → review
             feedback.implicit(text)
         except Exception as e:
             print(f'  ⚠️ implicit feedback failed: {e}')
         from agent import secretary
         if secretary.URL_RX.search(text):                      # a link → read it (the question is the rest)
-            return _link(u, text)
+            before = (u.get('doc') or {}).get('ts')
+            return _keep_file(msg, u, before, _link(u, text))
         tutor_outs = _tutor(u, text, msg.sender)
         if tutor_outs is not None:
             return tutor_outs
+        if msg.role == 'owner' and not msg.group and _study_on():   # 19/11 "על מה אני צריך להתמקד?" / "מה המשוב בתוכנה?"
+            try:                                               # his grades + the grader's feedback (agent/grades), no model
+                from agent import grades
+                if (gr := grades.answer(text)) is not None:
+                    return [Out('text', gr)]
+            except Exception as e:
+                print(f'  ⚠️ grades: {e!r}'[:200])
+        if msg.role == 'owner' and not msg.group and _study_on():   # 18/11 "על מה לשים את הכסף בהסתברות?": past exams, no model
+            try:
+                from agent import exam_plan
+                if (ep := exam_plan.answer(text)) is not None:
+                    return [Out('text', ep)]
+            except Exception as e:
+                print(f'  ⚠️ exam plan: {e!r}'[:200])
         if CAPABILITIES.search(text) and not CAN_MSG_RX.match(text) and not _mind_on(msg):   # never let the RAG guess
             return [Out('text', menu() + _hint(u))]
         if THANKS.fullmatch(text):
             return [Out('text', 'בכיף 🙂' + _hint(u))]
+        if (fp := _fast(msg, u, text)) is not None:
+            return fp
         try:
             pl = _plan_and_learn(msg, u, text)
         except Exception as e:
@@ -3253,8 +3408,9 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
             finally:
                 u.pop('_voice_reroute', None)
     if msg.kind == 'image':
-        return _image(msg, '' if msg.forwarded else text, u)   # a forwarded caption is content, not what the owner asks
-    if msg.kind == 'contact':                                # The owner shared a contact card
+        before = (u.get('doc') or {}).get('ts')                # a forwarded caption is content, not what the owner asks
+        return _keep_file(msg, u, before, _image(msg, '' if msg.forwarded else text, u))
+    if msg.kind == 'contact':                                # the owner shared a contact card
         from agent import contacts
         name, phone = contacts.from_vcard(*((msg.text or '') + '\n').split('\n', 1))
         if not name or not phone:
@@ -3288,7 +3444,8 @@ def _route(msg: In, u: dict, st: dict | None = None) -> list[Out]:
                     q = CHAT_Q                                   # a WhatsApp chat export → summarise the conversation
             except OSError:
                 pass
-        return _secretary(u, media, media.name.split('__', 1)[-1], q)
+        before = (u.get('doc') or {}).get('ts')
+        return _keep_file(msg, u, before, _secretary(u, media, media.name.split('__', 1)[-1], q))
     if not text:
         return [Out('text', menu())]
     if u.get('quiz') and re.fullmatch(r'[אבגדabcd1-4]', text.lower().strip('.!? ')):
@@ -3415,6 +3572,10 @@ def _mind_turn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
         return None                                      # the router runs the owner's own words, never the model's
     if (d.get('_turn') or {}).get('tainted'):
         u['_read_others'] = True
+    if d.get('promise_fix') and msg.role == 'owner':        # 16/11 a promised change → recorded, and said as it is
+        from agent import feedback
+        said = feedback.never_again(list(u.get('history') or []) + [{'role': 'user', 'text': text}], text)
+        d['reply'] = f"{d['reply']}\n\n{said}".strip() if d.get('reply') else said
     try:
         if d['kind'] == 'study':
             from contextlib import nullcontext
@@ -3450,6 +3611,17 @@ def _mind_turn(msg: 'In', u: dict, text: str) -> list['Out'] | None:
             lead = '\n'.join(o.text for o in outs if o.kind == 'text' and o.text and o.text.strip() != mind.CLARIFY
                              and not _repeats(u, [o], text)).strip()
             return [Out('buttons', f'{lead}\n\n{c[0]}' if lead else c[0], buttons=c[1])]
+        if d.get('clarify') and '@' in (msg.sender or ''):
+            # 17/11 "כן פאדל" / "פאדל" → "רק לוודא, על מה מדובר?" twice, with nothing to pick: the numbered question his
+            # words name is the thing to clarify. It comes back as it was, its options under it
+            from whatsapp import outbox
+            try:
+                q = outbox.pull_question(msg.sender, text)
+            except Exception as e:
+                print(f'  ⚠️ clarify (open question): {e!r}'[:200])
+                q = None
+            if q:
+                return [Out('buttons', q['text'], buttons=q['buttons'])]
         if not d.get('clarify'):
             return None
     return outs or None
@@ -3510,7 +3682,8 @@ def _prefetch_decide(msg: 'In', u: dict, text: str) -> None:
             or msg.role != 'owner' or msg.group or len(text) < 3 or COMMANDISH.search(text):
         return
     from utils.budget import budget_lock_reason
-    if budget_lock_reason():
+    from utils import llm_health
+    if budget_lock_reason() or llm_health.is_open() or llm_health.TURN.get() and llm_health.TURN.get().get('block'):
         return
     from concurrent.futures import ThreadPoolExecutor
     from agent import assistant
@@ -3707,12 +3880,8 @@ def _study_answer(msg: In, text: str, ck: str | None) -> list[Out]:
     if ck and msg.role == 'owner':                     # 13/10: NotebookLM first — free, sources only, follow-ups
         from agent import nlm_ask
         if nlm_ask.has_notebook(ck):
-            try:
-                from whatsapp import outbox
-                if '@' in (msg.sender or ''):
-                    outbox.send_text(msg.sender, '🎓 שואל את NotebookLM של הקורס… (10–30 שניות)')
-            except Exception:
-                pass
+            from agent import interim                    # 17/11 the one interim line of the turn (agent/interim)
+            interim.say(interim.COURSE)
             ans = nlm_ask.ask(ck, text, msg.sender)
             if ans:
                 return [Out('text', ans)]
@@ -4035,6 +4204,12 @@ def _calendar(msg: In, u: dict, action: str, params: dict, text: str) -> list[Ou
 
 def _button(msg: In, u: dict, st: dict | None = None) -> list[Out]:
     p = msg.payload or ''
+    if p.startswith('oq:'):                                  # 19/11 a bare answer that isn't any one question's (outbox)
+        return _which_question(msg, p)
+
+    if p.startswith('jund:'):                                # 19/11 the ✅ for an undo (agent/journal)
+        from agent import journal
+        return [Out('text', journal.button(msg.sender, p))]
     if p.startswith('lf:'):                                  # 🧠 the evening "save what I learned?"
         from agent import learn
         return [Out('text', learn.button(u, msg.sender, p))]
@@ -4079,6 +4254,13 @@ def _button(msg: In, u: dict, st: dict | None = None) -> list[Out]:
     if p.startswith('oi:'):                                  # 15/11 "על מה מדובר? [המלון בטבריה] [משהו אחר]"
         from agent import open_items
         return [Out('text', open_items.button(msg.sender, p))]
+    if p.startswith('vi:'):                                  # 16/11 a line he wrote in Obsidian ("✍️ שלי"): his ✅ makes it his words
+        from vault_sync import mine
+        reply, then = mine.button(msg.sender, p)
+        if then and not u.get('paused'):
+            from dataclasses import replace as _replace
+            return [Out('text', f'{reply}\n▶️ "{then}"')] + _route(_replace(msg, kind='text', text=then, payload=''), u, st)
+        return [Out('text', reply)]
     if p.startswith('rmd:'):
         from agent import life
         _, op, rid = (p.split(':', 2) + ['', ''])[:3]
@@ -4087,6 +4269,11 @@ def _button(msg: In, u: dict, st: dict | None = None) -> list[Out]:
         from agent import escalate
         _, op, eid = (p.split(':', 2) + ['', ''])[:3]
         return [Out('text', escalate.button(msg.sender, op, eid))]
+    if p.startswith('nz:') and msg.role == 'owner':          # 16/11 mute / undo a kind of proactive message (agent/noise)
+        from agent import noise
+        _, op, kind = (p.split(':', 2) + ['', ''])[:3]
+        audit(msg.sender, f'noise_{op}', {'kind': kind})
+        return [Out('text', noise.answer(op, kind))]
     if p.startswith('sec:'):                                 # 11/11 a secretary note's one-tap answer (agent/proactive)
         from agent import proactive
         _, op, oid = (p.split(':', 2) + ['', ''])[:3]
@@ -4186,6 +4373,9 @@ def _add_events(sender: str, events: list[dict]) -> tuple[list[str], list[str], 
         audit(sender, 'calendar_add', {'event': ev, 'id': created.get('id'), 'link': created.get('htmlLink')})
         ids.append(created.get('id', ''))
         added.append(ev['title'])
+    if [i for i in ids if i]:                           # 19/11 undoable after a ✅ — the undo asks ✅ too (agent/journal)
+        from agent import journal
+        journal.record(sender, 'cal_add', ', '.join(added), {'ids': [i for i in ids if i]}, confirm=True)
     return [i for i in ids if i], added, skipped
 
 
@@ -4198,7 +4388,10 @@ def _reminder_offer(u: dict, ids: list[str], events: list[dict]) -> list[Out]:
     u.setdefault('rem', {})[key] = {'ids': ids, 'ts': datetime.now().isoformat(timespec='seconds')}
     opts = gcal.REMINDERS_ALLDAY if all(e.get('all_day') for e in events) else gcal.REMINDERS_TIMED
     note = '' if all(e.get('all_day') for e in events) else '\n(בכל מקרה אזכיר כאן בצ\'אט שעה לפני)'
-    return [Out('buttons', f'🔔 תזכורת נוספת? אזכיר כאן בצ\'אט וגם תקפוץ מהיומן.{note}',
+    # 17/11 "כן פאדל" / "פאדל" to this question got "רק לוודא, על מה מדובר?" twice: it didn't say what it was about
+    what = events[0].get('title', '') if len(events) == 1 else ''
+    many = '\n(אפשר גם כמה, למשל "1 2")'
+    return [Out('buttons', f'🔔 תזכורת נוספת{f" ל{what}" if what else ""}? אזכיר כאן בצ\'אט וגם תקפוץ מהיומן.{note}{many}',
                 buttons=[(lbl, f'rm:{m}:{key}') for lbl, m in opts] + [('בלי תזכורת', f'rm:none:{key}')])]
 
 
@@ -4213,13 +4406,46 @@ def _set_reminders(msg: In, u: dict, p: str) -> list[Out]:
             er.set_override(eid, [])
         return [Out('text', '👍 בלי תזכורת.')]
     from integrations import gcal
+    many = [int(m) for m in minutes.split('+') if m.isdigit()]      # 17/11 "1 2": several picks of one question
+    if not many:
+        return [Out('text', 'כבר לא בתוקף — אפשר להוסיף תזכורת ישירות ביומן.')]
     for eid in rem['ids']:
-        gcal.set_reminder(eid, int(minutes))
-        # the chat reminder too: the chosen time, plus the usual hour-before when the choice is a day or more ahead
-        er.set_override(eid, [int(minutes)] + ([er._load()['settings'].get('lead', er.DEFAULT_LEAD)]
-                                               if int(minutes) >= 1440 and int(minutes) < 6 * 1440 else []))
-    audit(msg.sender, 'calendar_reminder', {'ids': rem['ids'], 'minutes': int(minutes)})
+        gcal.set_reminder(eid, many if len(many) > 1 else many[0])
+        # the chat reminder too: the chosen times, plus the usual hour-before when a choice is a day or more ahead
+        er.set_override(eid, many + ([er._load()['settings'].get('lead', er.DEFAULT_LEAD)]
+                                     if any(1440 <= m < 6 * 1440 for m in many) else []))
+    audit(msg.sender, 'calendar_reminder', {'ids': rem['ids'], 'minutes': many if len(many) > 1 else many[0]})
+    if len(many) > 1:
+        return [Out('text', f'🔔 נקבעו {len(many)} תזכורות ({", ".join(_lead_words(m) for m in sorted(many, reverse=True))}) '
+                            f'— אזכיר כאן בצ\'אט, וגם יקפצו בטלפון מיומן גוגל.')]
     return [Out('text', '🔔 נקבעה תזכורת — אזכיר כאן בצ\'אט, וגם תקפוץ בטלפון מיומן גוגל.')]
+
+
+def _which_question(msg: In, p: str) -> list[Out]:
+    """19/11 the owner answered "2" with two numbered questions open and the bot couldn't know which. Nothing is guessed now:
+    a quote of a question he already answered says so, and a digit two open questions could mean asks which one, naming
+    both. Each option is that question's own answer: a ✅ there is still his explicit pick."""
+    from whatsapp import outbox
+    if p == outbox.GONE:
+        return [Out('text', 'על השאלה הזאת כבר ענית (או שהיא הוחלפה). אם משהו השתנה, תכתוב לי במילים.')]
+    _, _, picks, style = (p.split(':') + ['', '', '', ''])[:4]
+    try:
+        q = outbox.ask_which(msg.sender, picks, style)
+    except Exception as e:
+        print(f'  ⚠️ which question: {e!r}'[:200])
+        q = None
+    if q:
+        return [Out('buttons', q[0], buttons=q[1])]
+    return [Out('text', '🤔 לא בטוח לאיזו שאלה התכוונת. תכתוב במילים?')]
+
+
+def _lead_words(m: int) -> str:
+    """1440 → "יום לפני", 120 → "שעתיים לפני": the button's own words."""
+    from integrations import gcal
+    for lbl, v in gcal.REMINDERS_TIMED + gcal.REMINDERS_ALLDAY:
+        if v == m:
+            return lbl.replace('🔔', '').strip()
+    return f'{m} דקות לפני'
 
 
 # ── partner (The partner): adds to the owner's calendar after her own ✅, with a conflict check ──
@@ -4260,7 +4486,7 @@ def _notify_owner_added(st: dict, partner: str, events: list[dict], ids: list[st
     body = '\n\n'.join(gcal.describe(e) for e in events if e['title'] in titles)
     warn = ('\n\n⚠️ שים לב:\n' + '\n'.join(conflicts)) if conflicts else ''
     outbox.send_options(owner, f'💌 {PARTNER_NAME} הוסיפה ליומן שלך:\n\n{body}{warn}',
-                        [('👍 סבבה', f'noop:{key}'), ('↩️ לבטל', f'cal:undo:{key}')])
+                        [('👍 סבבה', f'noop:{key}'), ('↩️ לבטל', f'cal:undo:{key}')], busy='hold')
 
 
 def _forward_to_owner(st: dict, partner: str, item: dict) -> bool:
@@ -4276,7 +4502,7 @@ def _forward_to_owner(st: dict, partner: str, item: dict) -> bool:
     warn = ('\n\n⚠️ שים לב:\n' + '\n'.join(item['conflicts'])) if item.get('conflicts') else ''
     audit(partner, 'partner_proposal', {'events': item['events'], 'conflicts': item.get('conflicts')})
     return outbox.send_options(owner, f'💌 {PARTNER_NAME} מציעה להוסיף ליומן שלך:\n\n{body}{warn}',
-                               [('✅ להוסיף', f'cal:ok:{pid}'), ('❌ לא', f'cal:no:{pid}')])
+                               [('✅ להוסיף', f'cal:ok:{pid}'), ('❌ לא', f'cal:no:{pid}')], busy='hold')
 
 
 def _partner_recent(u: dict, minutes: int = 15) -> str:
@@ -4335,6 +4561,8 @@ def _partner(msg: In, u: dict, st: dict) -> list[Out]:
     from integrations import gcal
     text = (msg.text or '').strip()
     if msg.kind == 'button':
+        if (msg.payload or '').startswith('oq:'):             # 19/11 which of her two open questions (outbox)
+            return _which_question(msg, msg.payload)
         if (msg.payload or '').startswith('rm:'):
             return _set_reminders(msg, u, msg.payload)
         if (msg.payload or '').startswith('rmd:'):
@@ -4468,7 +4696,8 @@ def _nlm_doc(u: dict, ref: str, kind: str, name: str, question: str = '') -> lis
         nlm_ask._mark(True)
         return None
     nlm_ask._mark(False)
-    secretary.remember(u, Path(ref) if kind == 'file' else None, name, url=ref if kind == 'url' else '')
+    secretary.remember(u, Path(ref) if kind == 'file' else None, name, url=ref if kind == 'url' else '',
+                       answer='' if question else answer)
     u['doc'].update(nlm_source=sid, nlm_conv=conv)
     try:                                                       # the Obsidian brain keeps a readable copy
         from agent import brain
@@ -4476,7 +4705,38 @@ def _nlm_doc(u: dict, ref: str, kind: str, name: str, question: str = '') -> lis
     except Exception as e:
         print(f'  ⚠️ brain note failed: {e!r}'[:200])
     return ([Out('text', f'📎 *{name}*\n\n{answer}')] + _dated_offer(u, dated)
-            + [Out('text', '💬 אפשר לשאול עליו עוד — גם בעוד כמה ימים ("מה היה כתוב ב…")')])
+            + _kept_hint(u))
+
+
+# 15/11 "יש לך מספר הזמנה" five days after the booking PDF: the read lasted 30 minutes ("(חצי שעה)"). Now it's kept.
+KEPT_HINT = '💬 שמרתי את זה אצלי — אפשר לשאול עליו גם בעוד שבוע ("מה היה כתוב ב…")'
+HINT_DAYS = 7
+
+
+def _kept_hint(u: dict) -> list['Out']:
+    """17/11 the same "💬 שמרתי את זה אצלי… ("מה מספר ההזמנה")" came as its own message under every link, a LinkedIn post
+    too. Said once a week: what he already knows is noise."""
+    last = u.get('kept_hint_ts') or ''
+    try:
+        if last and datetime.now() - datetime.fromisoformat(last) < timedelta(days=HINT_DAYS):
+            return []
+    except ValueError:
+        pass
+    u['kept_hint_ts'] = datetime.now().isoformat(timespec='seconds')
+    return [Out('text', KEPT_HINT)]
+
+
+def _keep_file(msg: 'In', u: dict, before, outs: list['Out']) -> list['Out']:
+    """What the owner himself sent and the bot just read (u['doc'] is new and has its summary) → agent/my_files, for good."""
+    d = u.get('doc') or {}
+    if msg.role == 'owner' and not msg.group and d and d.get('ts') != before and (d.get('answer') or '').strip():
+        try:
+            from agent import my_files
+            my_files.add(msg.sender, d.get('name', ''), d['answer'], d.get('keys', ''), path=d.get('path') or None,
+                         url=d.get('url', ''))
+        except Exception as e:
+            print(f'  ⚠️ my_files add: {e!r}'[:200])
+    return outs
 
 
 CHAT_Q = ('זו שיחה מקבוצת וואטסאפ. סכם בעברית לוואטסאפ: *על מה דיברו* (עד 5 נקודות), *החלטות*, '
@@ -4541,16 +4801,25 @@ def _secretary(u: dict, path: Path, name: str, question: str = '', what: str = '
     except Exception as e:
         print(f'  ⚠️ secretary failed: {e}')
         return [Out('text', '⚠️ לא הצלחתי לקרוא את זה עכשיו. נסה שוב עוד רגע.')]
-    secretary.remember(u, path, name)
+    secretary.remember(u, path, name, answer='' if question else r['answer'], keys=r.get('keys', ''))
     outs = [Out('text', f'📎 *{name}*\n\n{r["answer"]}')] + _dated_offer(u, r['dated'])
-    outs.append(Out('text', '💬 אפשר לשאול עליו עוד (חצי שעה), למשל "מה כתוב שם על…"'))
+    outs += _kept_hint(u)
     return outs
+
+
+# words written to other people (a post he shares), not to the bot: plural asks, "היי כולם"
+SHARE_RX = re.compile(r'(?<![א-ת])(?:תיכנסו|תכנסו|תעשו\s+לייק|תגיבו|תשתפו|תפרגנו|תצביעו|הצביעו|היי\s+כולם|'
+                      r'אשמח\s+(?:מאוד\s+|מאד\s+)?אם\s+ת[א-ת]+ו)(?![א-ת])')
 
 
 def _link(u: dict, text: str) -> list[Out]:
     from agent import secretary
     url = secretary.URL_RX.search(text).group(0).rstrip('.,)!?')
     question = secretary.URL_RX.sub('', text).strip()
+    if SHARE_RX.search(question) and '?' not in question:
+        # 17/11 12:44 his LinkedIn post with "אשמח מאוד אם תיכנסו, תעשו לייק" (words for his friends) was read as a
+        # request to the bot: a rewrite of his message and an offer of more versions. It's the link he shared: read it
+        question = ''
     from urllib.parse import urlparse
     host = urlparse(url).hostname or ''
     if host and secretary._safe_host(host) and (via := _nlm_doc(u, url, 'url', host, question)) is not None:
@@ -4562,9 +4831,8 @@ def _link(u: dict, text: str) -> list[Out]:
             answer = secretary.ask_url(url, question)
         except Exception as e2:
             return [Out('text', f'🔗 {e2 if isinstance(e2, ValueError) else e}')]
-        secretary.remember(u, None, url, url=url)
-        return [Out('text', f'🔗 {answer}'),
-                Out('text', '💬 אפשר לשאול עליו עוד (חצי שעה), למשל "מה כתוב שם על…"')]
+        secretary.remember(u, None, url, url=url, answer='' if question else answer)
+        return [Out('text', f'🔗 {answer}')] + _kept_hint(u)
     except ValueError as e:
         return [Out('text', f'🔗 {e}')]
     except Exception as e:

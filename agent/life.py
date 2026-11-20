@@ -66,6 +66,14 @@ def remember(who: str, fact: str, path: Path | None = None) -> str:
     if fact and fact not in facts:
         facts.append(fact)
         del facts[:-MAX_FACTS]
+        # 17/11 when it was said: the vault note of the fact links to that day (vault_sync/assistant_export). Code only.
+        at = d.setdefault('memory_at', {}).setdefault(who, {})
+        at[fact] = datetime.now().isoformat(timespec='minutes')
+        for k in [k for k in at if k not in facts]:
+            del at[k]
+        if path is None:                 # 19/11 undoable (agent/journal)
+            from agent import journal
+            journal.record(who, 'memory', fact, {'fact': fact})
     _save(d, path)
     return f'🧠 זכרתי: {fact}'
 
@@ -154,6 +162,63 @@ def parse_reminder(text: str, now: datetime | None = None, client=None) -> dict:
             'nag': bool(r.get('nag')), 'question': str(r.get('question') or '').strip()}
 
 
+QUICK_RX = re.compile(r'^\s*(?:תזכיר|תזכירי)\s+לי\s+(.+?)\s*[.!]*\s*$')
+QUICK_WHAT_RX = re.compile(r'^(?:ל[א-ת]{2,}|על\s+[א-ת"״\'׳]{2,})')       # "לקנות חלב" / "על הפאדל" — said as he'd read it
+QUICK_LEFT_RX = re.compile(r'\d|(?<![א-ת])(?:מחר|היום|הערב|בוקר|ערב|לילה|צהריים|שעה|שעות|דקות|לפני|אחרי|עד|כל|יום|'
+                           r'שבוע|חודש|בעוד|עוד|ביום|ב(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת))(?![א-ת])|[?\n]')
+
+
+def quick_reminder(text: str, now: datetime | None = None) -> dict | None:
+    """17/11: "תזכיר לי לקנות חלב מחר ב-8 בבוקר" — the thing and the time, read in code (agent/hetime): no Gemini call.
+    Only when every time word was understood and nothing else in it looks like a time, a repeat or a condition
+    ("עד שאגיד", "כל יום", "יום לפני הטיסה"); otherwise None and the model reads it, as before."""
+    m = QUICK_RX.match(text or '')
+    if not m or len(m.group(1)) > 120:
+        return None
+    from agent import hetime
+    now = now or datetime.now()
+    body = m.group(1)
+    try:
+        w = hetime.parse(body, now)
+    except Exception as e:
+        print(f'  ⚠️ hetime: {e!r}'[:200])
+        return None
+    if not w or w.at <= now + timedelta(minutes=1):
+        return None
+    what = hetime.strip(body, w)
+    if not QUICK_WHAT_RX.match(what) or QUICK_LEFT_RX.search(what) or len(what) < 4 or len(what.split()) > 6:
+        return None
+    what = re.sub(r'^על\s+', '', what)
+    when = w.at.isoformat(timespec='minutes') if w.has_time else w.at.date().isoformat()
+    return {'text': what, 'when': when, 'repeat': 'none', 'nag': False, 'question': '', 'by': 'code'}
+
+
+def fix_day(r: dict, text: str, now: datetime | None = None) -> dict:
+    """The model's reminder, its DAY checked against the words (agent/hetime): "ביום ראשון" on a Saturday night is
+    tomorrow, whatever the model counted. Only one clear day in the words, no "לפני/אחרי X", no repeat. Never raises."""
+    try:
+        if not r.get('when') or r.get('repeat', 'none') != 'none' or re.search(r'(?<![א-ת])(?:לפני|אחרי)(?![א-ת])', text or ''):
+            return r
+        from agent import hetime
+        w = hetime.parse(text, now or datetime.now(), lessons=[])
+        if not w or not w.has_day or str(r['when'])[:10] == w.at.date().isoformat():
+            return r
+        fixed = w.at.isoformat(timespec='minutes') if w.has_time else w.at.date().isoformat() + str(r['when'])[10:16]
+        _log_fix('reminder_day', {'text': (text or '')[:120], 'model': r['when'], 'fixed': fixed})
+        return {**r, 'when': fixed}
+    except Exception as e:
+        print(f'  ⚠️ reminder day check: {e!r}'[:200])
+        return r
+
+
+def _log_fix(kind: str, detail: dict) -> None:
+    try:
+        from agent import factcheck
+        factcheck.log(kind, detail)
+    except Exception:
+        pass
+
+
 def add_reminder(chat: str, r: dict, path: Path | None = None) -> dict:
     d = _load(path)
     rec = {'id': secrets.token_hex(3), 'chat': chat, 'text': r['text'], 'due': r['when'][:16],
@@ -164,6 +229,9 @@ def add_reminder(chat: str, r: dict, path: Path | None = None) -> dict:
         rec['guessed'] = True
     d['reminders'].append(rec)
     _save(d, path)
+    if path is None:                     # 19/11 undoable (agent/journal)
+        from agent import journal
+        journal.record(chat, 'reminder', rec['text'], {'rid': rec['id']})
     return rec
 
 
@@ -206,7 +274,10 @@ def set_reminder(chat: str, text: str, own_words: str = '', now: datetime | None
     """One place for "תזכיר לי …" (the router and the agent loop): → (kind, body, buttons), or None when there's
     nothing to remind of. Importance comes from the owner's own words only (own_words; the request itself by default)."""
     now = now or datetime.now()
-    r = (parse or parse_reminder)(text)
+    quick = None if parse else quick_reminder(text, now)       # 17/11 the plain ones are read in code (agent/hetime)
+    r = quick or (parse or parse_reminder)(text)
+    if not quick and parse is None:
+        r = fix_day(r, own_words or text, now)
     if not r.get('text'):
         return None
     from agent import escalate
@@ -439,10 +510,15 @@ def route(chat: str, text: str, role: str = 'owner', path: Path | None = None, a
         return [('text', forget(chat, m.group(1), path), None)]
     if m := RX['list_clear'].search(t):
         return [('text', list_clear(m.group(1), path), None)]
-    if m := RX['list_add_b'].match(t):
-        return [('text', list_add(m.group(1), _items(m.group(2)), path), None)]
-    if m := RX['list_add_a'].match(t):
-        return [('text', list_add(m.group(2) or 'קניות', _items(m.group(1)), path), None)]
+    if (m := RX['list_add_b'].match(t)) or (m2 := RX['list_add_a'].match(t)):
+        name, items = (m.group(1), _items(m.group(2))) if m else (m2.group(2) or 'קניות', _items(m2.group(1)))
+        before = _load(path)['lists'].get(_norm_list(name), [])
+        said = list_add(name, items, path)
+        new = [i for i in items if i not in before]            # only what this added comes off again
+        if path is None and new:         # 19/11 undoable (agent/journal)
+            from agent import journal
+            journal.record(chat, 'list_add', ', '.join(new) + f' (רשימת {name})', {'list': name, 'items': new})
+        return [('text', said, None)]
     if m := RX['list_show'].search(t):
         return [('text', list_show(m.group(1), path), None)]
     if (m := RX['list_remove'].match(t)) and (m.group(2) or _load(path)['lists']):

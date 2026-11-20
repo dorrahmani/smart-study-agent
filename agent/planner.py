@@ -116,6 +116,7 @@ def log_done(chat: str, text: str, day: date | None = None, path: Path | None = 
     for g in hit:
         u['done'].append({'g': g['id'], 'd': day.isoformat()})
     u['done'] = u['done'][-400:]
+    u.pop('goals_quiet_said', None)                     # reported again: the goals come back to the morning
     _save(d, path)
     prog = progress(chat, day, path=path)
     return '💪 רשמתי! ' + ' · '.join(f"{g['emoji']} {prog.get(g['id'], 0)}/{g['per_week']}" for g in hit) + ' השבוע.'
@@ -293,6 +294,35 @@ def _todo_items(n: int = 5) -> list[str]:
         return []
 
 
+DORMANT_DAYS = 14
+
+
+def goals_dormant(chat: str, day: date, prog: dict | None = None, path: Path | None = None) -> tuple[bool, bool]:
+    """(quiet, say it now). 16/11: "🏋️ ערב פנוי — להתאמן? (0/3 השבוע)" and "🎯 השבוע: 0/3 · 0/1" every morning for
+    weeks — he never once reported a workout. A secretary stops asking about a goal you don't track: after two weeks with
+    nothing reported (and nothing matching in the calendar this week) the goals leave the morning, said once.
+    Any "התאמנתי" brings them back (log_done)."""
+    d = _load(path)
+    u = _me(d, chat)
+    since = u.get('goals_since')
+    if not since:                                        # first look: the goals are as old as the store (23/10 for the owner)
+        try:
+            born = date.fromtimestamp((path or STORE).stat().st_mtime)
+        except OSError:
+            born = day
+        u['goals_since'] = min(born, day).isoformat()
+        _save(d, path)
+        return False, False
+    cut = (day - timedelta(days=DORMANT_DAYS)).isoformat()
+    if since > cut or any(r.get('d', '') >= cut for r in u['done']) or any((prog or {}).values()):
+        return False, False
+    if u.get('goals_quiet_said'):
+        return True, False
+    u['goals_quiet_said'] = day.isoformat()
+    _save(d, path)
+    return True, True
+
+
 def daily_block(chat: str, day: date | None = None, cal: dict | None = None, u: dict | None = None,
                 path: Path | None = None, deadlines: bool = True) -> str:
     """"📋 המשימות להיום" — work, what to submit, the goals, open to-dos. 05/11: the study block for the nearest exam and
@@ -335,7 +365,10 @@ def daily_block(chat: str, day: date | None = None, cal: dict | None = None, u: 
     items = (cal or {}).get(day, [])
     prog = progress(chat, day, cal, path)
     days_left = 6 - (day.weekday() + 1) % 7                     # days after today until Saturday
-    if not _busy_evening(chat, day, items, path):
+    quiet, say_once = goals_dormant(chat, day, prog, path)
+    if say_once:
+        lines.append('• 🎯 הורדתי מהבוקר את היעדים השבועיים: לא סימנת כלום שבועיים. "התאמנתי" / "מה המטרות שלי" מחזירים.')
+    if not quiet and not _busy_evening(chat, day, items, path):
         for g in goals(chat, path):
             need = g.get('per_week', 0) - prog.get(g['id'], 0)
             if g['id'] != 'study' and need > 0 and need > days_left // 2:   # behind pace → today is a good day
@@ -344,7 +377,7 @@ def daily_block(chat: str, day: date | None = None, cal: dict | None = None, u: 
     for t in _todo_items():
         lines.append(f'• ☐ {t}')
     head = '📋 *המשימות להיום*'
-    gl = goals_line(chat, day, cal, path, study=push)
+    gl = '' if quiet else goals_line(chat, day, cal, path, study=push)
     if not lines:
         return f'{head}\nאין משימות פתוחות להיום 🎉' + (f'\n🎯 השבוע: {gl}' if gl else '')
     return head + '\n' + '\n'.join(lines) + (f'\n🎯 השבוע: {gl}' if gl else '')

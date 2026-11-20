@@ -33,7 +33,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from agent import starter_help
-from whatsapp.bridge import GATE_FILE, GROUP_OFF_RX, GROUP_ON_RX, MENTION_RX
+from whatsapp.bridge import FRIENDS_ON_RX, GATE_FILE, GROUP_OFF_RX, GROUP_ON_RX, MENTION_RX
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = GATE_FILE
@@ -85,7 +85,24 @@ _SECRET = re.compile(r'AIza[\w-]{10,}|\bsk-[\w-]{10,}|\bghp_\w{10,}|\bxox[bp]-|B
                      r'\b[A-Fa-f0-9]{32,}\b|\b[A-Za-z0-9+/_-]{40,}={0,2}')
 _SECRET_NAME = re.compile(r'GEMINI_API_KEY|GOOGLE_API_KEY|\.env\b')
 _STARTER_HOSTS = ('github.com', 'aistudio.google.com', 'ai.google.dev', 'notebooklm.google.com')  # what setup help links to
-_STARTER_FILE = re.compile(r'[\w/-]+\.(?:md|ya?ml|py|txt|json|toml|sh)$', re.I)
+_STARTER_FILE = re.compile(r'[\w/-]+\.(?:md|ya?ml|py|txt|json|jsonl|toml|sh|example|service|conf|ps1|bat|lock|pickle|timer|cfg|ini|env)$', re.I)
+_TLD = {'com', 'net', 'org', 'io', 'il', 'co', 'ai', 'dev', 'app', 'me', 'info', 'biz', 'xyz', 'ru', 'cn', 'tk', 'top', 'site',
+        'online', 'link', 'ly', 'gg', 'to', 'us', 'uk', 'de', 'fr', 'in', 'tv', 'cc', 'live', 'store', 'shop', 'click', 'ws',
+        'ac', 'edu', 'gov', 'eu', 'ms', 'so', 'is', 'it', 'es', 'nl', 'page', 'cloud', 'tech', 'pro', 'one', 'zip', 'mov'}
+
+
+def _domain_like(u: str) -> bool:
+    """17/11 helper answers name dotted config keys (sources.panopto.folder_id), modules (tests.test_safety_critical)
+    and files. What WhatsApp makes a link is http(s), www, or a name ending in a real top-level domain; look-alike
+    letters (evil.соm) count as one."""
+    if re.search(r'[.]\s+[A-Z]', u) and not re.match(r'(?i)https?:|www', u):
+        return False                                      # "her. In your .env" is a sentence, not her.in
+    t = re.sub(r'\s', '', u.lower())
+    if re.match(r'https?:|www[.]', t):
+        return True
+    host = re.split(r'[/?#]', t)[0]
+    last = re.split(r'\.|\[\.\]|\(\.\)|\(dot\)|dot|נקודה|。', host)[-1].strip('-_')
+    return last in _TLD or bool(re.search(r'[^\x00-\x7f]', last))
 _TAGALL = re.compile(r'@(?:everyone|all|here|כולם|הכל)\b|@\d{5,}', re.I)
 
 
@@ -124,15 +141,24 @@ def _gate() -> dict:
     return _read(GATE, {}) or {}
 
 
+def _friends() -> dict:
+    from agent import group_helper
+    return group_helper.gate_view()
+
+
 def _sync(d: dict) -> None:
     g = {'on': enabled(), 'groups': sorted(_gate().get('groups') or []),
-         'sessions': {gid: {'target': s['target'], 'until': s['until']} for gid, s in (d.get('sessions') or {}).items()}}
+         'sessions': {gid: {'target': s['target'], 'until': s['until']} for gid, s in (d.get('sessions') or {}).items()},
+         'friends': _friends()}
     _write(GATE, g)
 
 
 def sync_gate() -> None:
-    """At the worker's start: the bridge sees the kill switch, and a debate from before a restart is over."""
+    """At the worker's start: the bridge sees the kill switch, and a debate from before a restart is over. The owner's
+    "תענה לחברים" stays (his standing choice); a friend's message held by the cooldown is dropped."""
     _write(STATE, {'sessions': {}})
+    from agent import group_helper
+    group_helper.clear_pending()
     _sync({'sessions': {}})
 
 
@@ -140,7 +166,7 @@ def _set_group(gid: str, on: bool) -> None:
     g = _gate()
     groups = set(g.get('groups') or [])
     groups = groups | {gid} if on else groups - {gid}
-    g.update(on=enabled(), groups=sorted(groups))
+    g.update(on=enabled(), groups=sorted(groups), friends=_friends())
     _write(GATE, g)
 
 
@@ -227,23 +253,25 @@ def guard(reply: str, allowed: str = '', canary: str = '', mode: str = 'debate')
     known = squeeze(allowed)
     for hit in _URL.finditer(r):
         u = hit.group().rstrip('.,)')
-        if not (known and squeeze(u) in known) and not (mode == 'starter' and _starter_ok(u)):
+        if not (known and squeeze(u) in known) and not (mode == 'starter' and _starter_ok(u)) \
+                and not (mode == 'helper' and (_STARTER_FILE.fullmatch(u.lstrip('-')) or not _domain_like(u))):
             return 'url'
         r = r.replace(hit.group(), ' ')
     if _PHONE.search(r):
         return 'phone'
-    if _SECRET.search(r) or (mode != 'starter' and _SECRET_NAME.search(r)):
+    if _SECRET.search(r) or (mode not in ('starter', 'helper') and _SECRET_NAME.search(r)):
         return 'secret'
     if _TAGALL.search(r):
         return 'tag'
-    if mode == 'debate' and _INSULT.search(r):
+    if mode in ('debate', 'helper') and _INSULT.search(r):
         return 'insult'
-    if mode == 'debate' and _ME_OWNER.search(r):
+    if mode in ('debate', 'helper') and _ME_OWNER.search(r):
         return 'impersonation'
-    words = re.findall(r'[\w"]+', SYSTEM)
     low = ' '.join(re.findall(r'[\w"]+', r))
-    if any(' '.join(words[i:i + 8]) in low for i in range(len(words) - 7)):   # short ones: its introduction is meant to be said
-        return 'system_prompt'
+    for rules in ((SYSTEM, starter_help.RULES) if mode == 'helper' else (SYSTEM,)):
+        words = re.findall(r'[\w"]+', rules)
+        if any(' '.join(words[i:i + 8]) in low for i in range(len(words) - 7)):   # short ones: its introduction is meant to be said
+            return 'system_prompt'
     return ''
 
 
@@ -375,6 +403,9 @@ def process(m: dict, now: float | None = None) -> tuple[bool, list[str]]:
     gid = m.get('chat', '')
     if not enabled() or not m.get('bridge') or not gid.endswith('@g.us'):
         return True, []
+    if m.get('role') == 'group_friend':                 # 17/11 a friend on the list of a group in "תענה לחברים"
+        from agent import group_helper
+        return True, (group_helper.handle(m, now) if group_on(gid) else [])
     if m.get('role') != 'owner':
         return True, _debate(m, now)
     if m.get('forwarded') or m.get('edited'):
@@ -390,6 +421,8 @@ def process(m: dict, now: float | None = None) -> tuple[bool, list[str]]:
         _set_group(gid, True)
         _audit('group_on', gid)
         return True, ['פעיל כאן. אני מגיב רק לתיוג של המשתמש.']
+    if m.get('type') == 'text' and FRIENDS_ON_RX.fullmatch(req):
+        return True, _friends_on(m, gid)
     if not group_on(gid):
         return True, []
     if m.get('type') == 'text' and GROUP_OFF_RX.fullmatch(req):
@@ -398,19 +431,87 @@ def process(m: dict, now: float | None = None) -> tuple[bool, list[str]]:
         _set_group(gid, False)
         _audit('group_off', gid)
         return True, ['כיביתי את עצמי כאן.']
+    if m.get('type') == 'text' and (said := _friends_control(m, gid, req, d)) is not None:
+        return True, said
     # setup help for friends comes first: "תסביר לו איך מקימים את ה-starter" isn't an argument
     if m.get('type') == 'text' and DEBATE_RX.search(req) and not STARTER_ONLY_RX.search(req):
         return True, start(m, req, now)
     return False, []
 
 
+FRIENDS_OFF_RX = re.compile(r'\s*(?:שקט|תשתוק|די\s+לענות|(?:תפסיק|הפסק|תפסיקי)\s+לענות(?:\s+ל(?:חברים|כולם))?(?:\s+(?:כאן|פה))?)'
+                            r'\s*[.!]*\s*')
+FRIEND_DEL_RX = re.compile(r'\s*(?:תפסיק|הפסק|תפסיקי)\s+לענות\s+ל(?!חברים|כולם)(\S{0,20})\s*[.!]*\s*')
+FRIEND_ADD_RX = re.compile(r'\s*(?:תענה|תעני|תעזור|תעזרי)\s+(?:גם\s+)?ל(?!חברים|י(?:\s|$))(\S{0,20})(?:\s+(?!למה|על|ש)(\S{1,20}))?'
+                           r'\s*(?:בבקשה)?\s*[.!]*\s*')
+_PRONOUN = ('', 'ו', 'ה', 'הם', 'הן')
+
+
+def _friends_on(m: dict, gid: str) -> list[str]:
+    from agent import group_helper
+    if not group_on(gid):
+        _set_group(gid, True)
+    group_helper.set_mode(gid, True)
+    targets = [t for t in m.get('targets') or [] if t]
+    names = group_helper.add(gid, targets) if targets else []
+    _sync(_read(STATE, {}) or {})
+    who = group_helper.mode(gid).get('allow') or []
+    _audit('friends_on', gid, n=len(who))
+    return ['✅ מעכשיו אני עונה כאן לחברים על שאלות על הפרויקט (הקמה, מפתחות, וואטסאפ, עלויות, תקלות), ורק על זה.\n'
+            + (f'ברשימה: {", ".join(names)}.\n' if names else '')
+            + ('כדי להוסיף חבר: תענה להודעה שלו (או תתייג אותו) ותכתוב "@" + "תענה ל<שם>".' if not who else
+               'עוד חבר: "@" + "תענה ל<שם>" בתגובה להודעה שלו.')
+            + '\nלעצור: "@" + "שקט".']
+
+
+def _friends_control(m: dict, gid: str, req: str, d: dict) -> list[str] | None:
+    '''The owner's "תענה ל<שם>" / "תפסיק לענות ל<שם>" / "שקט" / "מה קרה בקבוצה?" in a group. None = not one of these.'''
+    from agent import group_helper
+    targets = [t for t in m.get('targets') or [] if t]
+    if (x := FRIEND_DEL_RX.fullmatch(req)) and targets:
+        gone = group_helper.remove(gid, targets)
+        _sync(_read(STATE, {}) or {})
+        return [f'הפסקתי לענות ל{gone[0]}.' if gone else 'הוא לא היה ברשימה.']
+    if FRIENDS_OFF_RX.fullmatch(req):
+        if gid in (d.get('sessions') or {}):
+            _end(d, gid, 'owner')
+        group_helper.set_mode(gid, False)
+        _sync(_read(STATE, {}) or {})
+        _audit('friends_off', gid)
+        return ['🤐 הפסקתי לענות לחברים כאן. אני מגיב רק לתיוג שלך.']
+    x = FRIEND_ADD_RX.fullmatch(req)
+    if x:
+        if not targets:
+            return ['למי? תענה להודעה שלו (או תתייג אותו) ותכתוב "@" + "תענה ל<שם>".']
+        if not group_helper.mode(gid).get('on'):
+            group_helper.set_mode(gid, True)
+        label = ' '.join(g for g in x.groups() if g).strip() if len(targets) == 1 else ''
+        names = group_helper.add(gid, targets, '' if label in _PRONOUN else label)
+        _sync(_read(STATE, {}) or {})
+        _audit('friend_add', gid, n=len(names))
+        return [f'👍 אענה גם ל{", ".join(names)} על שאלות על הפרויקט.']
+    if group_helper.REPORT_RX.fullmatch(req):
+        from whatsapp import outbox
+        chat = outbox.owner_chat()
+        if chat:
+            outbox.send_text(chat, group_helper.report())
+            return ['שלחתי לך בפרטי.']
+        return ['לא מצאתי את הצ׳אט הפרטי שלך.']
+    return None
+
+
 def tick(now: float | None = None) -> list[tuple[str, str]]:
     """Debates past their time end quietly, a message held by the cooldown gets its reply, and the owner hears once a day
     if something was blocked. No friend's words in that note."""
     now = now or time.time()
-    out: list[tuple[str, str]] = []
+    out: list = []
     if not enabled():
         return out
+    try:                                               # 17/11 a friend's message held by the cooldown: (group, text, quote)
+        from agent import group_helper
+        out += [x for x in group_helper.tick(now) if group_on(x[0])]
+    except Exception as e:
+        print(f'  ⚠️ group helper tick failed: {type(e).__name__}')
     d = _read(STATE, {}) or {}
     for gid in list(d.get('sessions') or {}):
         s = d['sessions'][gid]

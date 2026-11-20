@@ -85,8 +85,18 @@ def _portal_lessons(day: date) -> list[str] | None:
             end = f"–{e['end_time']}" if e.get('end_time') else ''
             place = timetable.place(e)
             out.append((e['time'], f"{e['time']}{end} {e['kind']} ב{timetable.short(e['course'])}" + (f' · {place}' if place else '')
-                        + (f" · {e['lecturer']}" if e.get('lecturer') else '')))
+                        + (f" · {e['lecturer']}" if e.get('lecturer') else '') + _portal_override(e, day)))
     return [x for _, x in sorted(out)]
+
+
+def _portal_override(e: dict, day: date) -> str:
+    """17/11 a my.tau lesson the university changed (agent/schedule) → " — ❌ מבוטל (הודעה במודל): …" on its line too
+    (it was only on calendar lines; without the lessons in the calendar the cancelled tutorial was listed as usual)."""
+    try:
+        from agent import schedule
+        return schedule.suffix(schedule.find(day, f"{e.get('course', '')} – {e.get('kind', '')}", e.get('time', '')))
+    except Exception:
+        return ''
 
 
 def lectures_on(day: date) -> list[str]:
@@ -181,6 +191,7 @@ def day_overview(day: date, chat: str | None = None, hide_private: bool = False,
     except Exception:
         submitted_title = None
     closed = _closed_items(chat)
+    ours = {((it.get('extendedProperties') or {}).get('private') or {}).get('oid') for it in items} - {None}
     for it in items:
         if _ended(it, after) or _closed_event(it, closed):
             continue
@@ -198,6 +209,9 @@ def day_overview(day: date, chat: str | None = None, hide_private: bool = False,
             room = site or (it.get('location') or '').split(',')[0].strip()
             if room:
                 line += f" · 📍 {room}" + (' (חדר חדש לפי האתר)' if site else '')
+        if not hide_private:                               # 16/11 cancelled / moved by the university (agent/schedule)
+            from agent import schedule
+            line += schedule.event_suffix(it)
         parts.append(line)
     synced = any(((it.get('extendedProperties') or {}).get('private') or {}).get('tau_src') == 'lessons'
                  or it.get('_cal_kind') == 'lessons' for it in items)
@@ -207,7 +221,7 @@ def day_overview(day: date, chat: str | None = None, hide_private: bool = False,
         try:
             from utils.deadlines import pending
             for a in pending(horizon_days=60):
-                if a['due'].date() == day and not (after and a['due'] <= after):
+                if a['due'].date() == day and not (after and a['due'] <= after) and a['key'] not in ours:
                     from config.paths import COURSE_NAMES
                     parts.append(f"• 📝 הגשה {a['due']:%H:%M}: {COURSE_NAMES.get(a.get('course_key'), '')} — {a.get('title', '')}")
         except Exception:

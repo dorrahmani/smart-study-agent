@@ -244,6 +244,10 @@ def _close_all(d: dict, hits: list[dict], status: str, cal=None, path: Path | No
     for t in hits + extra:
         _close(t, status, cal, now)
     _settle(hits[0]['chat'], [t['text'] for t in hits + extra], path)
+    if path is None:                     # 19/11 "תבטל את מה שעשית" can open it again (agent/journal)
+        from agent import journal
+        journal.record(hits[0]['chat'], 'task_close', '; '.join(t['text'] for t in hits + extra),
+                       {'ids': [t['id'] for t in hits + extra]})
     return extra
 
 

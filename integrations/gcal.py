@@ -78,7 +78,43 @@ def parse_events(text: str, now: datetime | None = None, client=None) -> tuple[l
                 events.append(validate(ev))
             except (TypeError, ValueError):
                 continue
+    if client is None:                                          # 17/11 the model's day checked against the words
+        events = fix_day(events, text, now)
     return events[:10], str(raw.get('question') or '').strip()
+
+
+def fix_day(events: list[dict], text: str, now: datetime | None = None) -> list[dict]:
+    """One event, and the request names one clear day (agent/hetime): the event is on that day, whatever date the
+    model counted ("ביום ראשון" on a Saturday night is tomorrow). The model's hour stays unless the words give one.
+    Not for "לפני/אחרי X", several days, or anything hetime can't tell. Never raises."""
+    try:
+        if len(events) != 1 or re.search(r'(?<![א-ת])(?:לפני|אחרי|עד)(?![א-ת])', text or ''):
+            return events
+        from agent import hetime
+        w = hetime.parse(text, now or datetime.now(), lessons=[])
+        if not w or not w.has_day:
+            return events
+        ev = dict(events[0])
+        start = date.fromisoformat(str(ev['start'])[:10])
+        if start == w.at.date():
+            return events
+        shift = w.at.date() - start
+        if ev.get('all_day'):
+            ev['start'] = (start + shift).isoformat()
+            ev['end'] = (date.fromisoformat(str(ev['end'])[:10]) + shift).isoformat()
+        else:
+            s0, e0 = datetime.fromisoformat(ev['start']), datetime.fromisoformat(ev['end'])
+            s1 = w.at if w.has_time else s0 + shift
+            ev['start'], ev['end'] = s1.isoformat(timespec='minutes'), (s1 + (e0 - s0)).isoformat(timespec='minutes')
+        try:
+            from agent import factcheck
+            factcheck.log('calendar_day', {'text': (text or '')[:120], 'model': events[0]['start'], 'fixed': ev['start']})
+        except Exception:
+            pass
+        return [ev]
+    except Exception as e:
+        print(f'  ⚠️ calendar day check: {e!r}'[:200])
+        return events
 
 
 def parse_event(text: str, now: datetime | None = None, client=None) -> dict:
@@ -320,11 +356,13 @@ def delete_alarm(event_id: str, service=None) -> bool:
     return True
 
 
-def set_reminder(event_id: str, minutes: int, service=None) -> None:
-    """A phone notification from Google Calendar `minutes` before the start (all-day: before midnight)."""
+def set_reminder(event_id: str, minutes, service=None) -> None:
+    """A phone notification from Google Calendar `minutes` before the start (all-day: before midnight).
+    17/11 several at once ("1 2" = a day before and two hours before): a list of minutes."""
     svc = service or _service()
+    many = sorted({int(m) for m in (minutes if isinstance(minutes, (list, tuple, set)) else [minutes])}, reverse=True)
     svc.events().patch(calendarId='primary', eventId=event_id, body={'reminders': {
-        'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': int(minutes)}]}}).execute()
+        'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': m} for m in many[:5]]}}).execute()
 
 
 # (label, minutes before start). All-day events start at 00:00, so "the evening before" = 240.
@@ -531,13 +569,35 @@ def week_text(start: date, days: int = 7, service=None, hide_private: bool = Fal
             dt = datetime.fromisoformat(st['dateTime'])
             d, t = dt.date(), dt.strftime('%H:%M')
         else:
-            d, t = date.fromisoformat(st.get('date')), 'כל היום'
+            d, t = date.fromisoformat(st.get('date')), 'כל היום' + _multi_day(it)
+            d = max(d, start)                     # 31/10 "חופשה בטבריה" 30/10–01/11 sat under Friday: "היה אתמול"
         if d != cur:
             lines.append(f"\n*יום {WEEKDAY_HE[d.weekday()]} {d:%d/%m}*")
             cur = d
         loc = '' if hide_private else (it.get('location') or '').split(',')[0].strip()
-        lines.append(f"• {t} — {_summary(it, hide_private)}" + (f" · 📍 {loc}" if loc else ''))   # 23/10: "איפה ההרצאה?"
+        lines.append(f"• {t} — {_summary(it, hide_private)}" + (f" · 📍 {loc}" if loc else '')   # 23/10: "איפה ההרצאה?"
+                     + ('' if hide_private else _override(it)))
     return '\n'.join(lines)
+
+
+def _override(it: dict) -> str:
+    """16/11 a lesson the university changed (agent/schedule): " — ❌ מבוטל (הודעה במודל): …" on its line."""
+    try:
+        from agent import schedule
+        return schedule.event_suffix(it)
+    except Exception:
+        return ''
+
+
+def _multi_day(it: dict) -> str:
+    """An all-day event of several days → " (30/10–01/11)": its last day is end.date minus one (Google's end is exclusive).
+    31/10 the partner asked "מה הלוז של המשתמש היום" during a trip and got "היומן ריק, היה רשום אתמול"."""
+    st, en = it.get('start') or {}, it.get('end') or {}
+    try:
+        first, last = date.fromisoformat(st['date']), date.fromisoformat(en['date']) - timedelta(days=1)
+    except (KeyError, ValueError, TypeError):
+        return ''
+    return f' ({first:%d/%m}–{last:%d/%m})' if last > first else ''
 
 
 def day_text(day: date, service=None, hide_private: bool = False) -> str:
@@ -551,7 +611,8 @@ def day_text(day: date, service=None, hide_private: bool = False) -> str:
         if 'dateTime' in st:
             t = datetime.fromisoformat(st['dateTime']).strftime('%H:%M')
         else:
-            t = 'כל היום'
+            t = 'כל היום' + _multi_day(it)
         loc = '' if hide_private else (it.get('location') or '').split(',')[0].strip()
-        lines.append(f"• {t} — {_summary(it, hide_private)}" + (f" · 📍 {loc}" if loc else ''))   # 23/10: "איפה ההרצאה?"
+        lines.append(f"• {t} — {_summary(it, hide_private)}" + (f" · 📍 {loc}" if loc else '')   # 23/10: "איפה ההרצאה?"
+                     + ('' if hide_private else _override(it)))
     return '\n'.join(lines)
