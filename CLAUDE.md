@@ -21,7 +21,8 @@ Talk to them in their language (the docs are Hebrew + English).
 3. Create the config files: `python scripts/setup_check.py --init` (add `--student` for path B). It creates `.env` from `.env.example` and never overwrites.
 4. Work through `SETUP.md` one section at a time. After each section run `python scripts/setup_check.py` — it lists exactly what is still missing and never prints a secret.
 5. Finish with the tests (below) and one real message from the owner's phone to the bot.
-6. Explain costs: see "What costs money" in `SETUP.md`. Set a budget alert in Google AI Studio before the first run.
+6. Explain costs: `docs/COSTS.md` (about $3–10 a month assistant-only, $15–30 with study). Set a budget alert in Google Cloud Billing before the first run.
+   Recommend `SSA_BRAIN=1` (the agent loop). The personal-subscription route (`SSA_SUBSCRIPTION=1`) is off by default: explain its trade-offs from `utils/gemini_sub.py` before they turn it on.
 
 ## Secrets — the hard rules
 
@@ -51,9 +52,22 @@ These are enforced by tests in `tests/test_safety_critical.py` (the deploy gate)
 
 ## Working in the code
 
-- Layout: `agent/` (assistant core: `core.py` routing, `mind.py` the agent loop and its tools, `proactive.py`, `escalate.py`, `obligations.py`, …),
-  `whatsapp/` (bridge + worker), `integrations/` (calendar, mail), `collectors/` + `pipelines/` + `generators/` (study domain),
-  `vault_sync/` (Obsidian second brain), `dashboard/`, `deploy/` (systemd, hooks), `scripts/`, `tests/`.
+- Layout: `agent/` (the assistant), `whatsapp/` (bridge + worker + outbox), `integrations/` (calendar, mail, web),
+  `collectors/` + `pipelines/` + `generators/` (study domain), `vault_sync/` (Obsidian second brain), `dashboard/`, `deploy/`
+  (systemd, cron, hooks), `scripts/`, `tests/`. The path of one message and the safety gates: `docs/ARCHITECTURE.md`.
+  Every feature with its switch and cost: `docs/FEATURES.md`.
+- Where things are:
+  | Area | Modules |
+  |---|---|
+  | Turn routing | `agent/core.py` (buttons, deterministic handlers), `agent/fastpath.py` (schedule answers, no model), `agent/emergency.py` (no-model fallback), `agent/chat_sub.py` (opt-in subscription chat), `agent/mind.py` (the agent loop + tools), `agent/interim.py` |
+  | Truth checks | `agent/factcheck.py`, `agent/schedule.py`, `agent/hetime.py` (Hebrew times) |
+  | Secretary | `agent/life.py`, `agent/tasks.py`, `agent/open_items.py`, `agent/closure.py`, `agent/escalate.py`, `agent/approvals.py`, `agent/journal.py` (undo), `agent/catchup.py`, `agent/load_radar.py`, `agent/rhythm.py`, `agent/noise.py`, `agent/proactive.py`, `agent/away.py` (trips), `agent/weekly_personal.py`, `agent/my_files.py`, `agent/group_helper.py`, `agent/domains/` |
+  | Reliability | `utils/llm_health.py`, `agent/consistency.py`, `scripts/consistency_check.py`, `scripts/wa_bridge_watch.py`, `scripts/backup_restore_test.py`, `utils/system_health.py`, `utils/budget.py` + `config/budget_caps.json` |
+  | Web / about itself | `integrations/freeweb.py` (Python first), `integrations/websearch.py`, `agent/project_qa.py`, `scripts/pc/projects_digest.py` (optional) |
+  | Self-improvement | `agent/improve.py`, `docs/SELF_IMPROVE.md`, `docs/SKILLS.md` |
+  | Study (`SSA_STUDY=1`) | `agent/obligations.py`, `agent/obligation_ingest.py`, `agent/deadline_ladder.py`, `agent/deadline_cal.py` (opt-in via `config/assistant.yaml`), `agent/grades.py`, `agent/exam_plan.py`, `agent/course_lookup.py`, `agent/nlm_ask.py`, `agent/campus.py`, `generators/nlm_lectures.py`, `collectors/local_asr.py` |
+  | Second brain | `vault_sync/assistant_export.py`, `vault_sync/maps.py`, `vault_sync/personal_index.py`, `vault_sync/mine.py`, `vault_sync/notewriter.py`, `vault_sync/privacy.py` |
+- A new study-only tool goes in `STUDY_TOOLS` of `agent/mind.py`; a new study tick goes in the `study` set of `tick_list()` in `whatsapp/worker.py`.
 - Tests — run both before telling the user it works:
   ```
   python -m pytest tests/ -q

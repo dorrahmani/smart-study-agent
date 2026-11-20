@@ -72,14 +72,20 @@ sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 
 **צריך מפתח OpenAI?** לא חובה. הוא משמש רק לתמלול: **הודעות קוליות** לבוט, והרצאות בלי כתוביות בשכבת הלימודים. בלי `OPENAI_API_KEY` הודעות קוליות לא מתומללות (כותבים לבוט בטקסט), והרצאות בלי כתוביות מדולגות. `SMART_STUDY_DISABLE_WHISPER=1` = אף פעם לא לשלם על תמלול.
 
-**כמה זה עולה?**
+**כמה זה עולה?** בערך ‎$3–10 לחודש לעוזר בלבד, ‎$15–30 עם הלימודים. פירוט: [COSTS.md](COSTS.md).
 | מה | בערך |
 |---|---|
-| העוזר בשימוש יומיומי (Gemini) | עשרות סנטים עד דולר בחודש |
+| הודעה למוח (Gemini) | ‎$0.005–0.015 |
+| שאלות לוז, תזכורות, כפתורים, ביטול, "מה פספסתי" | ‎$0 (בלי מודל) |
+| שאלה מהרשת | ‎$0 מובנית · ‎~$0.0005 כללית |
 | שרת Oracle Always Free | ‎$0 |
-| סיכום שיעור עם כתוביות / בלי | ‎$0.08 / ‎$0.40–0.50 |
+| סיכום שיעור עם כתוביות או תמלול מקומי / תמלול בתשלום | ‎$0.08 / ‎$0.40–0.50 |
 
-**יש תקרה?** כן. תקרה קשיחה של ‎$50 לחודש (`utils/budget.py`): מעליה כל הקריאות בתשלום נעצרות (`data/budget_lock.json`) ומגיעה הודעה. בנוסף `SSA_BRAIN_DAY_CAP` (ברירת מחדל ‎$1 ליום לשיחות) ו-`SSA_BRAIN_MAX_COST` (‏‎$0.10 להודעה). כל קריאה נרשמת ב-`data/usage.jsonl`.
+**איך מוזילים?** כתוביות קודם ותמלול מקומי בשרת (`SSA_LOCAL_ASR`), המסלול המהיר, חיפוש ברשת בפייתון, NotebookLM קודם לשאלות על החומר, ותקרות. כל אלה דולקים כברירת מחדל. מנוי Gemini אישי (`SSA_SUBSCRIPTION=1`) **כבוי** כברירת מחדל: תנאי המנוי חלים עליך, הוא איטי יותר, וטקסט של אחרים לעולם לא עובר אליו (`COSTS.md` §5).
+
+**החשבונית גבוהה מהדשבורד?** זה קרה: עד שכל הקריאות נרשמו יחד עם טוקני החשיבה, החשבונית הייתה גבוהה מהיומן. לסמוך על החשבונית ולהגדיר התראת תקציב ב-Google Cloud.
+
+**יש תקרה?** כן. תקרה קשיחה של ‎$50 לחודש (`utils/budget.py`, `SSA_MONTH_CAP_USD`), ואפשר תקרה אחרת לכל חודש ב-`config/budget_caps.json`. מעליה כל הקריאות בתשלום נעצרות (`data/budget_lock.json`), מגיעה הודעה, והבוט עובר למצב חירום ועונה מהנתונים. בנוסף `SSA_BRAIN_DAY_CAP` (ברירת מחדל ‎$1 ליום לשיחות) ו-`SSA_BRAIN_MAX_COST` (‏‎$0.10 להודעה). כל קריאה נרשמת ב-`data/usage.jsonl`.
 
 **מפתח דלף לגיט?** להחליף אותו מיד (revoke ב-AI Studio ומפתח חדש). מחיקה ב-commit הבא לא מוחקת מההיסטוריה (`SECURITY.md`).
 
@@ -107,9 +113,11 @@ sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 
 ## 🎓 שכבת הלימודים (SSA_STUDY)
 
-**מה זה SSA_STUDY?** הדגל של שכבת הלימודים. `0` (ברירת המחדל) = רק העוזר, בלי שום קוד לימודים. `1` = מעקב מטלות ובחנים ממודל, עדכונים מהאוניברסיטה רק לקבוצה שלך, סיכומי שיעורים מפנופטו, אתר קורס, NotebookLM, מבחנים ומערכת שעות.
+**מה זה SSA_STUDY?** הדגל של שכבת הלימודים. `0` (ברירת המחדל) = רק העוזר, בלי שום קוד לימודים. `1` = מעקב מטלות ובחנים ממודל (גם מטלה שהוזכרה במייל, תוך 15 דקות), סולם דדליינים, ציונים ומשוב הבודק, סטטיסטיקת מבחנים, עדכונים מהאוניברסיטה רק לקבוצה שלך, סיכומי שיעורים מפנופטו, אתר קורס, NotebookLM, מבחנים ומערכת שעות. הכול ב-[FEATURES.md](FEATURES.md) §2.
 
-**אני לא בתל אביב.** העוזר (מסלול א׳) עובד בכל מקום. שכבת הלימודים נבנתה לת"א: באוניברסיטה אחרת צריך להתאים את טופס ההתחברות ב-`collectors/panopto_collector.py` ו-`collectors/moodle_collector.py` ואת `settings.panopto.base_url` / `settings.moodle.base_url` ב-`config/courses.yaml`. ‏my.tau והמייל האוניברסיטאי ספציפיים לת"א (`SETUP.md` §ב5).
+**אפשר שכל הדדליינים ייכנסו ליומן שלי לבד?** כן, אבל רק אם תבקש במפורש: `config/assistant.yaml` עם `auto_deadlines_to_calendar: true` (מהדוגמה `config/assistant.example.yaml`). רק האירועים האלה נכתבים בלי כרטיס, ושום דבר לא נמחק: מה שהוגש מסומן "✅ הוגש". כל פעולה אחרת ביומן עדיין מחכה ל-✅.
+
+**אני לא בתל אביב.** העוזר (מסלול א׳) עובד בכל מקום. חלק מההתאמות הן בקבצים: `SSA_UNIVERSITY`, `config/university_pages.json`, `config/campus.json`, `config/student_lines.txt`. שכבת הלימודים נבנתה לת"א: באוניברסיטה אחרת צריך להתאים את טופס ההתחברות ב-`collectors/panopto_collector.py` ו-`collectors/moodle_collector.py` ואת `settings.panopto.base_url` / `settings.moodle.base_url` ב-`config/courses.yaml`. ‏my.tau והמייל האוניברסיטאי ספציפיים לת"א (`SETUP.md` §ב5).
 
 **איך מוסיפים קורס?** ב-`config/courses.yaml`: ‏`name`, ‏`course_code`, ‏`my_sessions` (יום, שעה, קבוצה), ‏`sources.panopto.folder_id` (`python scripts/find_panopto_folders.py`), ‏`sources.moodle.course_id`. ואז את המפתח שלו ל-`SSA_ACTIVE_COURSES` (`SETUP.md` §ב2).
 
@@ -133,13 +141,17 @@ sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 |---|---|
 | 📅 יומן | "תוסיף ליומן מחר ב-20 ארוחת ערב" · "מה יש לי השבוע" · "תזיז את הפגישה למחר" |
 | ⏰ תזכורות | "תזכיר לי בעוד שעה להתקשר לאמא" · "כל יום ב-8 לקחת ויטמין" · "אילו תזכורות יש לי" |
-| ⏳ משימות | "מה מחכה לי" · "ביטלתי את המלון" (סוגר את הפריט) |
+| ⏳ משימות | "מה מחכה לי" · "ביטלתי את המלון" (סוגר את הפריט) · "תבטל את מה שעשית" (ביטול הפעולה האחרונה של הבוט) · "מה פספסתי" |
+| 🧳 נסיעות | "אני בים המלח מ-26 עד 29" · "מה אני צריך לסיים לפני ים המלח?" |
+| 📎 הקבצים שלך | "מה מספר ההזמנה של המלון?" (מכל קובץ או קישור ששלחת) |
+| 🌐 רשת | "מה מזג האוויר מחר בחיפה" · "כמה זה 100 דולר בשקלים" · "מתי נכנסת שבת" |
+| 🛠️ על עצמו | "איך עובד הגיבוי?" · "מה העלות החודשית?" (רק לבעלים) |
 | 🤝 הודעות ותיאומים | "תתאם עם יוסי פגישה בשבוע הבא" · "שלח לאמא ש…" · כרטיס איש קשר + "תיצור איתם קשר" (הכול עם ✅) |
 | 🌐 הרשמה באתר | "תרשום אותי ל<קישור>": בדפדפן אמיתי, עד לפני התשלום (צריך `playwright install chromium`) |
 | 🔗 קריאה | קישור, קובץ, צילום: "מה הדדליין פה?", "תסכם לי". הודעה קולית: עם `OPENAI_API_KEY` |
 | 🧠 זיכרון | "תזכור ש…" · "מה אתה זוכר עליי" |
 | 🔕 שקט | "תפסיק לשאול על זה" · שעות שקט ב-`SSA_QUIET_HOURS` (ברירת מחדל 23-7) |
-| 🎓 לימודים (`SSA_STUDY=1`) | "מה חסר לי?" · "יצא פתרון לתרגיל 3?" · "בחן אותי" |
+| 🎓 לימודים (`SSA_STUDY=1`) | "מה חסר לי?" · "מה אני צריך להגיש?" · "יצא פתרון לתרגיל 3?" · "על מה אני צריך להתמקד?" · "על מה לשים את הכסף בהסתברות?" · "בחן אותי" |
 
 **אפשר שיזמין לי מקום / יקבע תור / יבטל הזמנה?** כן, בכתיבה לעסק (כרטיס איש קשר + "תיצור איתם קשר ותזמין…") או בהרשמה באתר עם קישור. הוא מכין את ההודעה או ממלא את הטופס, מראה לך, ושולח רק אחרי ✅ שלך. באתר הוא עוצר לפני תשלום (`agent/booking.py`, ‏`agent/web_agent.py`).
 
@@ -184,14 +196,19 @@ sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge
 | `SSA_GROUPS` | `1` = הבוט בקבוצות, רק כשאתה מתייג אותו |
 | `SSA_PROACTIVE` | `1` = השכבה ש"שמה לב" (עד 3 ביום) |
 | `SSA_QUIET_HOURS` | שעות שקט, ברירת מחדל `23-7` |
+| `SSA_BRAIN` | `1` = המוח (מומלץ). בלי זה עונה הנתב הישן |
 | `SSA_BRAIN_MODEL` / `SSA_BRAIN_DAY_CAP` / `SSA_BRAIN_MAX_COST` | מודל השיחות / תקרה יומית (‎$1) / תקרה להודעה (‎$0.10) |
+| `SSA_MONTH_CAP_USD` / `SSA_SITE_API_CAP` | התקרה החודשית (‎$50, או לפי חודש ב-`config/budget_caps.json`) / בניית האתר בלילה (‎$0.10) |
+| `SSA_SUBSCRIPTION` | `1` = מנוי Gemini אישי לחלק מהעבודה. **כבוי כברירת מחדל**, לקרוא קודם את `COSTS.md` |
+| `NTFY_TOPIC` | התראה מחוץ לוואטסאפ כשהקישור לגשר נופל (רשות, בנוסף למייל) |
 | `SSA_NOTIFY_CHANNEL` | לאן התראות: `whatsapp` או `telegram` |
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_USER_ID` | ערוץ התראות שני. בלי ה-ID הבוט עונה לכולם |
 | `DASHBOARD_PASSWORD` | חובה אם מריצים את הדשבורד |
 | `SSA_STUDY` | `0` = רק העוזר, `1` = שכבת הלימודים |
 | `TAU_USERNAME` / `TAU_ID` / `TAU_PASSWORD` | ההתחברות לאוניברסיטה (רק ב-`SSA_STUDY=1`) |
 | `SSA_ACTIVE_COURSES` | המפתחות של קורסי הסמסטר מתוך `config/courses.yaml` |
-| `OPENAI_API_KEY` | רק תמלול: הודעות קוליות והרצאות בלי כתוביות |
+| `OPENAI_API_KEY` | רק תמלול: הודעות קוליות, והרצאות בלי כתוביות כשהתמלול המקומי לא זמין |
+| `SSA_LOCAL_ASR` / `SSA_ASR_PYTHON` / `SSA_ASR_MODEL` | תמלול הרצאות מקומי בשרת (‎$0) / ה-venv שלו / תיקיית המודל |
 | `SMART_STUDY_DISABLE` / `SMART_STUDY_DISABLE_WHISPER` | לכבות את צינור הלימודים / אף פעם לא לשלם על תמלול |
 | `GMAIL_CREDENTIALS_JSON` / `RECIPIENT_EMAIL` | סיכומים במייל |
 | `SSA_AUTHORIZED_KEYS` | טביעות האצבע של מפתחות ה-SSH המותרים בשרת (לבדיקת האבטחה) |
@@ -214,13 +231,15 @@ Always start with `python scripts/setup_check.py`: it knows your path (`SSA_STUD
 
 **Pairing:** `WA_TRANSPORT=bridge`, `WA_BOT_NUMBER`, `WA_OWNER` in `.env`; `venv_wa/bin/pip install neonize`; run `whatsapp/bridge.py`; the code appears in `data/wa_bridge/pair_code.txt`; on the bot's phone: Linked devices → Link a device → "Link with phone number".
 
-**Keys and costs:** the Gemini key comes from https://aistudio.google.com/apikey (billing on plus a budget alert) and lives only in `.env`. Daily use costs cents to about a dollar a month, the Oracle server is $0, and a lecture summary is $0.08 with captions or $0.40–0.50 without. A hard $50/month lock stops every paid call, and there is a daily cap on conversations (`SSA_BRAIN_DAY_CAP`). OpenAI is only for transcription (voice notes, and lectures without captions).
+**Keys and costs:** the Gemini key comes from https://aistudio.google.com/apikey (billing on plus a budget alert) and lives only in `.env`. Assistant only is about $3–10 a month, with the study layer about $15–30 (see [COSTS.md](COSTS.md)). A mind message is $0.005–0.015; fast-path answers, reminders, buttons and undo are $0; the Oracle server is $0; a lecture summary is about $0.08 with captions or local transcription, or $0.40–0.50 with the paid transcriber. The personal-subscription route (`SSA_SUBSCRIPTION=1`) is off by default. A hard $50/month lock (or one per month in `config/budget_caps.json`) stops every paid call and switches the bot to emergency mode, which answers from your data. There is also a daily cap on conversations (`SSA_BRAIN_DAY_CAP`). OpenAI is only for transcription (voice notes, and lectures without captions).
 
 **Google Calendar:** enable the Calendar API, set the OAuth consent screen to External and then **In production** (in Testing the token dies after 7 days), create a **Desktop app** client, then run `python scripts/gcal_auth.py <client.json>` → `config/gcal_token.json`. For a server, sign in on your PC and `scp` the token.
 
 **Safety:** only `WA_OWNER` is obeyed. Nothing goes to another person, your calendar or a website without your ✅ button. Text from mail, the web or other people is data, never a command. It never types passwords or card details and never clicks pay. Your keys stay in your own `.env` on your own server.
 
 **Add your own layer:** a flag in `config/features.py`, a module in `agent/`, its tools in `TOOLS` of `agent/mind.py` (filtered by `active_tools()`), and its ticks in `tick_list()` of `whatsapp/worker.py`. Copy the study layer.
+
+**What's new and where:** every feature with its switch and cost is in [FEATURES.md](FEATURES.md); how a message travels (fast path → mind → tools → fact check → outbox) and the safety gates are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Update:** `git pull`, `pip install -r requirements.txt`, run the tests, then `sudo systemctl restart smart-study-wa-worker smart-study-wa-bridge`.
 

@@ -43,6 +43,7 @@ python scripts/setup_check.py --init               # יוצר .env מהדוגמ�
 | `WA_BOT_NUMBER` | המספר שהגשר מקושר אליו (§א3) |
 | `WA_OWNER_NAME` | איך הבוט קורא לך |
 | `SSA_STUDY` | נשאר `0` במסלול הזה |
+| `SSA_BRAIN=1` | מומלץ: המוח (Gemini עם כלים שרק קוראים). בלי זה עונה הנתב הישן, בקריאה אחת |
 | `OPENAI_API_KEY` (רשות) | רק אם רוצים שהבוט יבין **הודעות קוליות** (תמלול). בלי זה כותבים לו בטקסט |
 
 > ⚠️ את `.env` לא שולחים לאף אחד, לא מדביקים בצ'אט ולא מעלים ל-git. בשרת: `chmod 600 .env`.
@@ -83,7 +84,7 @@ python scripts/setup_check.py --init               # יוצר .env מהדוגמ�
 crontab deploy/crontab.assistant.txt     # UTC. לעדכן נתיבים אם הם לא /home/ubuntu/smart_study_agent
 ```
 
-יש בו: heartbeat, בדיקת תקציב, גיבוי מוצפן ל-Drive (צריך `BACKUP_GPG_RECIPIENT`), בדיקת הטוקנים, בדיקת האבטחה הלילית ולולאת השיפור (§א7).
+יש בו: heartbeat, בדיקת תקציב, גיבוי מוצפן ל-Drive (צריך `BACKUP_GPG_RECIPIENT`), בדיקת שחזור שבועית של הגיבוי (`scripts/backup_restore_test.py`, בלי לפענח), בדיקת עקביות לילית (`scripts/consistency_check.py`), מעקב אחרי הקישור לוואטסאפ עם התראה מחוץ לוואטסאפ (`scripts/wa_bridge_watch.py`: מייל ו/או `NTFY_TOPIC`), דוח שבועי, בדיקת הטוקנים, בדיקת האבטחה הלילית ולולאת השיפור (§א7).
 
 ## א6. בדיקה
 
@@ -102,6 +103,9 @@ python scripts/setup_check.py                                # "✅ ready"
 - **דשבורד** (Streamlit): `DASHBOARD_PASSWORD`, ואז `venv/bin/streamlit run dashboard/app.py --server.address 127.0.0.1 --server.port 8501`. הוא מאזין רק ל-127.0.0.1. מבחוץ דרך מנהרת SSH או Tailscale Serve (רק ב-tailnet, **אף פעם לא Funnel**).
 - **לולאת השיפור ו"קלוד: …":** משימות שינוי רצות בסוכן קוד (Claude Code CLI) תחת משתמש מבודד, עם חומת אש ליציאה (`deploy/claude_agent/`). כל תיקון עובר את הבדיקות בענף נפרד ומחכה ל-✅. ההגדרה הזו דורשת חשבון של סוכן הקוד. בלעדיה "קלוד: …" לא יכול לשנות כלום, ושאר העוזר עובד כרגיל.
 - **הקשחת שרת** (מומלץ): `deploy/ssh/00-hardening.conf`, `deploy/fail2ban/`, `deploy/systemd/hardening/` (פירוט ב-`docs/RUNBOOK.md` §2). בדיקת האבטחה הלילית: `scripts/security_check.py`. הקבועים בראש הקובץ (פורטים, sudoers, משתמשים) תואמים לשרת המקורי, אז בהרצה הראשונה `--dry` ולעדכן לשרת שלך. `SSA_AUTHORIZED_KEYS` = טביעת האצבע של המפתח שלך.
+- **מוח שני ב-Obsidian:** `scripts/vault_assistant.py` (ב-cron, `--dry` לתצוגה) כותב אזור לעוזר בכספת, מפות וחיפוש בפתקים שלך. הפתקים שלך עוברים במחשב ← Drive ← שרת ב-`rclone copy` בלבד (`scripts/vault_pull.ps1`).
+- **מנוי Gemini אישי (כבוי כברירת מחדל):** `SSA_SUBSCRIPTION=1` מעביר שיחה פשוטה וסיכומים למנוי במקום ל-API. לקרוא קודם את `docs/COSTS.md` §5 ואת `utils/gemini_sub.py`: תנאי המנוי חלים עליך, וטקסט של אחרים אף פעם לא עובר לשם.
+- **תקרה לכל חודש:** `config/budget_caps.json` (למשל תקרה נמוכה בחודש המבחנים). לא נקבעת תקרה מתחת למה שכבר הוצא.
 - **שער פריסה:** ‏bare repo בשרת + `deploy/hooks/` (ראו `deploy/hooks/README.md`). כל `git push` מריץ את `tests/test_safety_critical.py`, ופריסה שנכשלת נדחית.
 
 # חלק ב׳: תחום הלימודים 🎓
@@ -121,10 +125,13 @@ python scripts/setup_check.py --init --student     # יוצר config/courses.yam
 | `SSA_STUDY=1` | מדליק את התחום |
 | `TAU_USERNAME`, `TAU_ID`, `TAU_PASSWORD` | פרטי ההתחברות שלך לאוניברסיטה (אותם פרטים של מודל) |
 | `SSA_ACTIVE_COURSES` | המפתחות של הקורסים של הסמסטר הזה מתוך `config/courses.yaml` |
-| `OPENAI_API_KEY` (רשות) | רק לתמלול כשאין כתוביות. בלי זה, הרצאות בלי כתוביות מדולגות |
+| `OPENAI_API_KEY` (רשות) | תמלול בתשלום, רק אחרון: קודם כתוביות (מחכים להן עד 48 שעות), ואז תמלול מקומי בשרת (`SSA_LOCAL_ASR`, ‎$0, ראו `.env.example` §6) |
+| `SSA_UNIVERSITY`, `SSA_COURSE_SITE_URL` (רשות) | שם האוניברסיטה ואתר הקורסים שלך, לשורות של המוח |
 | `GMAIL_CREDENTIALS_JSON`, `RECIPIENT_EMAIL` (רשות) | סיכומים במייל (§ב3) |
 
-עם `SSA_STUDY=1` נוספים לבוט: מעקב חובות, מייל האוניברסיטה, מודל, סיכומים, NotebookLM, חזרות ומבחנים.
+עם `SSA_STUDY=1` נוספים לבוט: מעקב חובות (כולל מטלה שהוזכרה במייל, תוך 15 דקות), סולם דדליינים, ציונים ומשוב, סטטיסטיקת מבחנים, מייל האוניברסיטה, מודל, סיכומים, NotebookLM, חזרות ומבחנים. רשימה מלאה: `docs/FEATURES.md` §2.
+
+רשות: `config/obligations.yaml` (חובות שאף אוסף לא רואה, מ-`config/obligations.example.yaml`) ו-`config/assistant.yaml` עם `auto_deadlines_to_calendar: true` אם אתה רוצה שכל דדליין ייכנס ליומן שלך לבד (מ-`config/assistant.example.yaml`, שם זה `false`).
 
 ## ב2. מערכת השעות: `config/courses.yaml`
 
@@ -161,6 +168,7 @@ python scripts/sync_notebooklm_all.py # מחברת לכל קורס + העלאה 
 ## ב5. מודל ופנופטו (אוניברסיטה אחרת?)
 
 - ההתחברות לת"א (SSO) נמצאת ב-`collectors/panopto_collector.py` ו-`collectors/moodle_collector.py`. הכתובות ב-`config/courses.yaml` → `settings.panopto.base_url` / `settings.moodle.base_url`.
+- הגדרות של אוניברסיטה אחרת בלי לגעת בקוד: `config/university_pages.json` (הדפים לחיפוש והדומיין), `config/campus.json` (בניינים וזמני הליכה), `config/student_lines.txt` (שורות נוספות למוח), `SSA_UNI_MAIL_DOMAIN` (דומיין המייל שלא מנוקה מהפתקים).
 - באוניברסיטה אחרת צריך להתאים את טופס ההתחברות (שמות השדות) ואת כתובות הבסיס. my.tau (`integrations/tau_portal.py`) והמייל האוניברסיטאי ספציפיים לת"א. בלעדיהם הבוט פשוט לא עונה על שעות מבחנים מהאתר.
 - `scripts/panopto_cookie_probe.py` בודק כמה זמן מחזיקה ההתחברות.
 
@@ -182,8 +190,9 @@ PYTHONIOENCODING=utf-8 python -m tests.test_assistant_only     # מסלול א׳
 
 ## מה עולה כסף, ואיך עוצרים
 
+- בערך ‎$3–10 לחודש לעוזר בלבד, ‎$15–30 עם הלימודים. פירוט, מחיר לכל יכולת ודרכים לחסוך: [docs/COSTS.md](docs/COSTS.md).
 - Gemini (הבוט, קריאת קבצים, סיכומים), OpenAI (תמלול בלבד: הודעות קוליות לבוט, והרצאות בלי כתוביות בתחום הלימודים). כל קריאה נרשמת ב-`data/usage.jsonl` ומוצגת בדשבורד.
-- תקרה קשיחה ‎$50 לחודש (`utils/budget.py`): מעליה הכול נעצר (`data/budget_lock.json`) ומגיעה הודעה. בנוסף לזה יש תקרה יומית לשיחות (`SSA_BRAIN_DAY_CAP`).
+- תקרה קשיחה ‎$50 לחודש (`utils/budget.py`): מעליה הכול נעצר (`data/budget_lock.json`) ומגיעה הודעה. בנוסף לזה יש תקרה יומית לשיחות (`SSA_BRAIN_DAY_CAP`), תקרה לכל חודש ב-`config/budget_caps.json` ותקרה לבניית האתר (`SSA_SITE_API_CAP`). כשנגמר התקציב הבוט עובר למצב חירום ועונה מהנתונים.
 - לעצור את הבוט: `sudo systemctl stop smart-study-wa-worker`. לכבות את צינור הלימודים: `SMART_STUDY_DISABLE=1`. בלי תמלול בתשלום: `SMART_STUDY_DISABLE_WHISPER=1`.
 
 ## עדכון לגרסה חדשה

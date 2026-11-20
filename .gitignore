@@ -84,3 +84,11 @@ rclone.conf
 *.sqlite3
 config/*.env
 .env.local
+
+# ── personal settings (examples are committed as *.example) ──
+config/project_aliases.json
+config/student_lines.txt
+
+# Personal standing authorisations and obligations (examples: config/*.example.yaml)
+config/assistant.yaml
+config/obligations.yaml

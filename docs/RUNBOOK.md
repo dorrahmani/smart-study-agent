@@ -99,6 +99,18 @@ git revert <sha> && git push vm
 ```
 (force-push חסום בכוונה.)
 
+### 📵 הגשר של וואטסאפ התנתק (התראה מחוץ לוואטסאפ)
+`scripts/wa_bridge_watch.py` (cron כל 5 דק׳, בלי LLM, `bridge.py` לא נגוע) קורא את `data/wa_bridge/status.json`, קיום `session.sqlite3`, `systemctl is-active` ואת היומן של `smart-study-wa-bridge`. **התנתקות/סשן חסר → התראה מיד; מנותק או שירות למטה 10+ דק׳ → התראה.** ניתוק של שניות (websocket EOF ואז "connected to WhatsApp") הוא רגיל ולא מתריע. התראה אחת לכל תקלה + הודעת "חזר" אחת; מצב ב-`data/wa_bridge_watch.json`, לוג ב-`logs/wa_bridge_watch.log`.
+**ערוצים (כולם מחוץ לוואטסאפ, כל מה שמוגדר):** מייל למשתמש עצמו (`RECIPIENT_EMAIL` ב-.env או `settings.email.recipient` ב-courses.yaml) דרך טוקן ה-Gmail הקיים (`config/gmail_token.pickle`, הרשאת send) · ו-ntfy.sh אם `NTFY_TOPIC` מוגדר ב-.env (נושא ארוך ואקראי, **לא ב-git**). אם `invalid_grant` — ראה "Gmail" למעלה; אף ערוץ לא עבד → נרשם ב-`data/undelivered_alerts.jsonl` ומנסים שוב כל 5 דק׳.
+**הפעלת ntfy (פעם אחת, המשתמש):** 1. בטלפון: להתקין את האפליקציה ntfy (חנות האפליקציות). 2. בשרת: `echo "NTFY_TOPIC=ssa-$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" >> ~/smart_study_agent/.env` ואז `grep ^NTFY_TOPIC ~/smart_study_agent/.env` כדי לראות את השם. 3. באפליקציה: ＋ ← Subscribe to topic ← להדביק את השם (שרת ברירת מחדל ntfy.sh). 4. בדיקה: `curl -d "בדיקה" ntfy.sh/<השם>` — צריכה להגיע התראה. (כל מי שיודע את השם יכול לקרוא — לכן הוא ארוך ואקראי ולא נשמר ב-git.)
+**חיבור מחדש (הגשר לא מדפיס QR — מזווג בקוד):**
+1. `ssh <user>@<your-server>`
+2. `cd ~/smart_study_agent/data/wa_bridge && mkdir -p old && mv session.sqlite3* old/` (מזיזים הצידה, לא מוחקים)
+3. `sudo systemctl restart smart-study-wa-bridge; sleep 40; cat ~/smart_study_agent/data/wa_bridge/pair_code.txt` (קוד של 8 תווים; מגיע גם כהתראת push בטלפון של הבוט)
+4. בטלפון של מספר הבוט: WhatsApp ← מכשירים מקושרים (Linked devices) ← קישור מכשיר (Link a device) ← "קישור עם מספר טלפון במקום" ← להקליד את הקוד.
+5. `cat ~/smart_study_agent/data/wa_bridge/status.json` צריך להראות `connected`; תוך 5 דק׳ תגיע הודעת "חזר". אם `WA_BOT_NUMBER` חסר ב-`config/wa_bridge.env` הגשר לא יזווג.
+**בדיקה בלי להפיל כלום:** `venv/bin/python3 scripts/wa_bridge_watch.py --simulate logged_out` (מדפיס את ההודעה, לא שולח).
+
 ### 🔌 השרת לא עונה ל-SSH
 1. חכה 5 דק׳ (ה-watchdog במחשב מנסה לאושש).
 2. Oracle Cloud Console → Compute → Instances → smart-study-agent → **Reboot**.
@@ -225,11 +237,23 @@ scp -i ~/.ssh/smart_study.key ubuntu@<your-server>:/tmp/s.gpg . && gpg -d s.gpg 
 ### 📊 דוח שבועי על הבוט (`scripts/weekly_bot_report.py`)
 הודעה קצרה למשתמש פעם בשבוע: הוצאות API (מ-`data/usage.jsonl`, וחלק הבוט), מספר פניות, כמה פעולות השער עצר, תקלות, משימות קלוד (רצו/נפרסו/נדחו) ומה נפרס (`git log` על כל `deploy A -> B` ב-`logs/deploy.log*`). בלי תוכן לימודי, בלי LLM. פעם אחת לשבוע ISO (`data/weekly_bot_report_sent.json`).
 **בדיקה:** `venv/bin/python3 scripts/weekly_bot_report.py --dry` (מדפיס, לא שולח, לא מסמן). `--force` שולח שוב באותו שבוע.
+17/11: אותה ריצה שולחת קודם הודעה נפרדת — **"🗓️ השבוע שלך"** (`agent/weekly_personal.py`: מה נסגר, מה נדחה, 7 הימים הבאים, רצפים; מהקבצים בלבד, פעם בשבוע ISO, `data/weekly_personal_sent.json`, לא בשעות שקט). `--personal-dry` מדפיס אותה בלבד. הדוח עצמו מראה גם 👍/👎 (`data/feedback_ratings.jsonl`) ואת **הקצב של המשתמש** (`agent/rhythm.py` → `data/rhythm.json`; הטבלה המלאה: `venv/bin/python3 -m agent.rhythm`).
 **הפעלה (crontab -e על ה-VM, ראשון 09:00 שעון ישראל בחורף / 10:00 בקיץ):**
 ```
 0 7 * * 0 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Weekly Bot Report" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/weekly_bot_report.py" >> /home/ubuntu/smart_study_agent/logs/weekly_bot_report.log 2>&1
 ```
 ה-git של הפריסות: `~/smart_study_agent.git` (או `SSA_GIT_DIR` ב-.env).
+
+### 👩‍💼 המוח השני ב-Obsidian (`scripts/vault_assistant.py`, `vault_sync/`)
+כל מה שהעוזר יודע ועושה → `Smart Study Agent/👩‍💼 העוזר/` (אנשים, מסמכים, פתוח עכשיו, השבוע, נסגרו, חובות לפי קורס, יומן יומי, דברים שלמדתי, השתקות, הבוט). בלי מודל, בלי רשת מלבד rclone: $0. הערה נכתבת רק כשהטקסט שלה השתנה.
+- **✍️ שלי** (ההערות שהמשתמש כותב ב-PC): `vault_pull.ps1` מעלה רק את התיקייה הזו ל-`gdrive:smart-study-agent/vault_inbox` (+ `.ssa_manifest.txt`), והמשיכה מדלגת עליה. ב-VM: `vault_sync/mine.py` מושך ל-`data/vault_inbox_staging` וממזג: אף פעם לא מוחק ולא דורס (גרסה ישנה → `.replaced/`, התנגשות → שני העותקים).
+- שורה `- [ ] תזכיר לי …` / `לעוזר: …` בהערה שלו → שאלה בוואטסאפ עם ✅ (פעם אחת לשורה, בתוך תקציב השאלות). רק ✅ שלו הופך אותה להודעה שלו (`vi:` ב-core).
+- `private: true` (היומן, הבוט, ✍️ שלי; `config/vault_privacy.json` לשינוי לפי תחום) → לא עולה ל-NotebookLM.
+**בדיקה:** `venv/bin/python3 scripts/vault_assistant.py --dry --out /tmp/vault_dry` (כותב רק שם, לא שולח).
+**הפעלה (crontab -e על ה-VM):**
+```
+40 8,23 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Vault Assistant" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/vault_assistant.py" >> /home/ubuntu/smart_study_agent/logs/vault_assistant.log 2>&1
+```
 
 ### 🧠 שיפור עצמי (`agent/improve.py`, נקרא מ-`scripts/agent_daily_review.py`)
 רץ על **מנוי Claude** בלבד (משימות `claude_job` כ-`claudeagent`, כולל המתנה למכסה). אין Gemini, אין מפתח API.
@@ -240,3 +264,10 @@ scp -i ~/.ssh/smart_study.key ubuntu@<your-server>:/tmp/s.gpg . && gpg -d s.gpg 
 5. **אסור ללולאה לשנות** (`improve.DENY_RX`, נבדק גם ב-deploy): claude_job/improve/הסקירה, core, mind, whatsapp/, deploy/, תקציב, notify, אבטחה, config, requirements, קוד בדיקות. `tests/improve_cases.json` נפרס מהטלפון רק כהוספה (מחיקה/שינוי של מקרה → נדחה).
 **וואטסאפ:** "קלוד, תבדוק את עצמך עכשיו" · "כל כמה זמן אתה משתפר?" · "קלוד, תפרוס לבד תיקוני תיעוד" / "קלוד, בלי פריסה לבד".
 **בדיקה יבשה:** `PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/agent_daily_review.py --dry-run` (מדפיס את האותות וההחלטה, לא שומר ולא מריץ).
+
+### 🗂️ הבוט מכיר את הפרויקטים (`agent/project_qa.py`, 17/11)
+המשתמש (רק הבעלים — כלי `project` ב-`agent/mind.py`, `owner_only`) שואל "איך עובד X", "איזה קרונים רצים", "מה השתנה השבוע", "מה העלות".
+- **הריפו הזה:** אינדקס מקומי ל-HEAD (`data/project_index.json`, נבנה מחדש כשה-HEAD זז): docs, docstrings, config לא-סודי, deploy/, משתני סביבה, `git log`. בלי .env, secrets, tokens, data/, logs/; כל קטע עובר סינון סודות.
+- **מצב חי:** `crontab -l`, `/tmp/cron_health.log`, `agent/weekly.cost_lines`, נעילת תקציב, `utils/pipeline_health`, `systemctl is-active`.
+- **שאר הפרויקטים (אופציונלי):** `scripts/pc/projects_digest.py --push` במחשב (ידנית או ממשימה מתוזמנת; `SSA_SERVER` ב-.env) → `data/projects_digest.json` בשרת. פרויקט שמסומן ב-`SSA_SENSITIVE_RX`: רק תיעוד ומבנה. כינויים: `config/project_aliases.json`.
+- **עלות:** קריאת Gemini flash אחת לשאלה, מטמון לפי commit (`data/project_qa_cache.json`). בדיקה: `python scripts/project_qa_eval.py` (≥90%), שאלה בודדת: `python -m agent.project_qa "איזה קרונים רצים?"`.
