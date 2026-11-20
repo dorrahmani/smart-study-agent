@@ -45,10 +45,18 @@ def _read_fm(path: Path) -> tuple[dict, str]:
     return fm if isinstance(fm, dict) else {}, m.group(2)
 
 
-def _write_fm(path: Path, fm: dict, body: str) -> None:
+def _write_fm(path: Path, fm: dict, body: str) -> bool:
+    """Rewrite only when the text changes (16/11: ~400 summary notes were rewritten every night with the same
+    content: a new mtime each time, so Drive, the PC pull and the RAG staleness check all redid their work). → written?"""
     fm = {k: v for k, v in fm.items() if v not in (None, [], '')}
     out = '---\n' + yaml.safe_dump(fm, allow_unicode=True, sort_keys=False) + '---\n' + body
+    try:
+        if path.read_text(encoding='utf-8') == out:
+            return False
+    except OSError:
+        pass
     path.write_text(out, encoding='utf-8')
+    return True
 
 
 def _stem_to_wikilink(stem: str) -> str:
@@ -177,8 +185,7 @@ def relink(use_api: bool = True, write_concept_notes: bool = True,
         related_list = sorted(related)[:30]
         if related_list:
             fm['related'] = related_list
-        _write_fm(path, fm, body)
-        relinked += 1
+        relinked += _write_fm(path, fm, body)
 
     vr.invalidate_cache()
     return {

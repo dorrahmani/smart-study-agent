@@ -149,6 +149,17 @@ def _extract_topics(body: str) -> list[str]:
 # Wikilink engine
 # ─────────────────────────────────────────────────────────────────────────────
 
+_RETIRED_DIRS = {'replaced', '.replaced', 'misfiled', '.trash'}
+
+
+def _live_summaries(course_sum_dir: Path) -> list[Path]:
+    """17/11: the course's summaries, minus the retired ones. pipelines/slides_summaries.retire() moves a replaced summary into
+    <course>/replaced/; rglob picked it up again, so 12 retired lessons were written back into the vault on 16/11 and the PC
+    pull moved them aside again on every run."""
+    return sorted(p for p in course_sum_dir.rglob('*.md')
+                  if not any(part in _RETIRED_DIRS for part in p.relative_to(course_sum_dir).parts[:-1]))
+
+
 def _build_all_stems(course_key: str) -> dict[str, dict]:
     """
     בונה מפה של כל הסיכומים בקורס: stem → {date, type, topics, obsidian_stem}
@@ -158,7 +169,7 @@ def _build_all_stems(course_key: str) -> dict[str, dict]:
     if not course_sum_dir.exists():
         return result
 
-    for md_file in sorted(course_sum_dir.rglob('*.md')):
+    for md_file in _live_summaries(course_sum_dir):
         stem = md_file.stem
         date = _parse_date(stem)
         type_folder = md_file.parent.name   # "lectures" | "tutorials"
@@ -407,7 +418,7 @@ def export_all_summaries(force: bool = False) -> int:
         # בנה מפת stems לקורס זה (לצורך wikilinks)
         all_stems = _build_all_stems(course_key)
 
-        for md_file in sorted(course_sum_dir.rglob('*.md')):
+        for md_file in _live_summaries(course_sum_dir):
             out = _course_dir(course_key) / f'{md_file.stem}.md'
             if not force and out.exists() and out.stat().st_mtime >= md_file.stat().st_mtime:
                 continue
