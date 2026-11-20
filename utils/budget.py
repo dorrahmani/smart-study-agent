@@ -9,6 +9,8 @@ transcription (Whisper / gpt-4o-transcribe) kept spending after the lock.
 wraps generate_content once in a process: every API call there passes one gate. The owner's own message passes as it always did
 (the sites he reaches check for themselves); everyone else, and background work, stops at the lock; the partner and contacts also
 have a daily count. Subscription calls cost nothing and never get here: gemini_sub wraps this wrapper, so install this first.
+19/11 (emergency mode, agent/emergency): The owner's own API calls stop at the lock too — the subscription above still answers
+his plain chat free, and what needs the paid API waits for the 1st. Every call's outcome feeds utils/llm_health.
 """
 from __future__ import annotations
 
@@ -30,6 +32,10 @@ _count_lock = threading.Lock()
 
 class BudgetLocked(RuntimeError):
     """No API call now. An Exception, so what already survives a failed call survives this."""
+
+
+class LLMPaused(BudgetLocked):
+    """19/11 emergency mode: this chat turn may not call a model (Gemini is out or the month is locked)."""
 
 
 @contextmanager
@@ -63,12 +69,19 @@ def _take_one(role: str, cap: int, path: Path | None = None, today: str | None =
 
 def gate(actor: str | None = None) -> None:
     """Before a paid call. Raises BudgetLocked, or returns."""
+    from utils import llm_health
+    if llm_health.blocking() or llm_health.in_turn() and llm_health.is_open():   # 19/11 emergency mode: fail now,
+        llm_health.mark_blocked()                                                # not after a timeout / more retries
+        raise LLMPaused('emergency mode: no model calls this turn')
     who = actor or ACTOR.get() or _default_actor
-    if who == 'owner':
-        return
     reason = budget_lock_reason()
     if reason:
+        # 19/11: The owner's own turns stop at the lock too (the cap is hard; $39.33 on the 18th). The subscription sits
+        # above this guard and still answers his plain chat for free; what needs the paid API waits for the 1st.
+        llm_health.mark_blocked()
         raise BudgetLocked(f'locked for {who}: {reason}')
+    if who == 'owner':
+        return
     cap = ROLE_CAPS.get(who)
     if cap is not None and not _take_one(who, cap):
         raise BudgetLocked(f'{who}: daily cap of {cap} calls')
@@ -77,7 +90,14 @@ def gate(actor: str | None = None) -> None:
 def _guarded(original):
     def guarded(self, *a, **kw):
         gate()
-        return original(self, *a, **kw)
+        from utils import llm_health
+        try:
+            r = original(self, *a, **kw)
+        except Exception as e:                        # 19/11 an outage error opens the breaker (utils/llm_health)
+            llm_health.note(False, e)
+            raise
+        llm_health.note(True)
+        return r
 
     guarded._ssa_budget = True
     return guarded
@@ -111,3 +131,67 @@ def budget_lock_reason(lock_path: Path = LOCK_PATH) -> str | None:
         return d.get('reason', 'budget locked')
     except Exception:
         return 'budget lock file exists'
+
+
+# ── budget pace (18/11) ─────────────────────────────────────────────────────
+# 18/11: $39.33 of the $50 cap on the 18th. The lock stops everything at $50; before that, work nothing waits for (the
+# study site's pages) stays off the paid API while the month is spending faster than cap / days. The owner's turns, lecture
+# summaries and transcription are not deferred by this.
+MONTH_CAP_USD = float(os.environ.get('SSA_MONTH_CAP_USD', '50'))      # the default; a month of its own in CAPS_PATH
+CAPS_PATH = LOCK_PATH.parent.parent / 'config' / 'budget_caps.json'
+_PACE: dict = {'at': 0.0, 'spent': 0.0, 'month': ''}
+
+
+def month_cap(month: str | None = None, default: float | None = None, path: Path | None = None) -> float:
+    """19/11 the hard cap of a month ('YYYY-MM'): config/budget_caps.json {"months": {"2026-12": 20}}, else `default`
+    (scripts/budget_check.HARD_LIMIT_USD), else SSA_MONTH_CAP_USD / 50. A cap set below what the month already spent
+    locks at the next budget check, so a lower cap goes on a month that hasn't started."""
+    month = month or datetime.utcnow().strftime('%Y-%m')
+    try:
+        d = json.loads((path or CAPS_PATH).read_text(encoding='utf-8'))
+        v = (d.get('months') or {}).get(month)
+        if isinstance(v, (int, float)) and v > 0:
+            return float(v)
+    except (OSError, ValueError, AttributeError):
+        pass
+    return float(default if default is not None else MONTH_CAP_USD)
+
+
+def month_spend(ledger: Path | None = None, now: datetime | None = None) -> float:
+    """This month's ledger total (UTC month, as scripts/budget_check.py counts it). Cached 10 minutes in a process."""
+    import time
+    now = now or datetime.utcnow()
+    month = now.strftime('%Y-%m')
+    if ledger is None and _PACE['month'] == month and time.time() - _PACE['at'] < 600:
+        return _PACE['spent']
+    path = ledger or LOCK_PATH.parent / 'usage.jsonl'
+    total = 0.0
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for ln in f:
+                if ln.startswith('{"ts": "' + month):
+                    try:
+                        total += float(json.loads(ln).get('cost_usd') or 0)
+                    except ValueError:
+                        pass
+    except OSError:
+        return 0.0
+    if ledger is None:
+        _PACE.update(at=time.time(), spent=total, month=month)
+    return total
+
+
+def ahead_of_pace(now: datetime | None = None, cap: float | None = None, spent: float | None = None) -> bool:
+    """True when this month's spend so far is more than its share of the cap (cap × the part of the month gone).
+    Unreadable ledger → False: this only defers optional work, it is not the lock."""
+    import calendar
+    now = now or datetime.utcnow()
+    cap = month_cap(now.strftime('%Y-%m')) if cap is None else cap
+    try:
+        spent = month_spend(now=now) if spent is None else spent
+    except Exception:
+        return False
+    days = calendar.monthrange(now.year, now.month)[1]
+    gone = (now.day - 1 + (now.hour * 3600 + now.minute * 60) / 86400) / days
+    return spent > cap * max(gone, 1 / days)
+

@@ -1,0 +1,4 @@
+{
+ "_note": "Monthly hard cap of the paid API (USD) per month, 'YYYY-MM': 20. A month not listed uses scripts/budget_check.py HARD_LIMIT_USD (50). Set a lower cap only for a month that has not started: below what is already spent, the next budget check locks.",
+ "months": {}
+}

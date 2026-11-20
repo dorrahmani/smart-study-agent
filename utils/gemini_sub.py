@@ -1,5 +1,13 @@
 """
-utils/gemini_sub.py — Gemini calls on the owner's Google AI Pro subscription instead of the paid API.
+utils/gemini_sub.py — OPTIONAL: Gemini calls on the owner's Google AI Pro subscription instead of the paid API.
+
+OFF BY DEFAULT. Nothing here runs unless SSA_SUBSCRIPTION=1 AND the isolated runner below is installed on the server.
+Read this before you turn it on:
+  • It drives a personal Google account from a script. Google's terms may not allow that; the account could be
+    flagged or limited. Use a separate Google account, never your main one.
+  • It saves money only on plain text calls (chat, summaries, the site build). The API stays the fallback, so with it
+    off (the default) everything still works, it just costs the API price (docs/COSTS.md has the numbers).
+  • Third-party text (groups, friends, mail, web pages, files) never goes to it: api_only() below.
 
 03/10/2026: The owner's explicit choice, aware of the risk that automated use of a personal account could get it flagged.
 The bot's text calls went through the Gemini CLI.
@@ -136,6 +144,8 @@ def _no_new_privs() -> bool:
 def available(path: Path | None = None, now: float | None = None) -> bool:
     if os.environ.get('PYTEST_CURRENT_TEST') or os.environ.get('SSA_NO_SUBSCRIPTION'):
         return False
+    if os.environ.get('SSA_SUBSCRIPTION', '0').strip() != '1':      # opt-in only (see the top of this file)
+        return False
     u = _usage(path)
     if (now or time.time()) < u.get('rest_until', 0):
         return False
@@ -182,6 +192,9 @@ def ask(prompt: str, json_mode: bool = False, model: str = MODEL, timeout: int |
     """One subscription call (a hung one tried again up to `retries` times). None on any problem (the caller falls
     back to the API)."""
     if API_ONLY.get() or run is None and not available(path):
+        return None
+    from utils import llm_health
+    if llm_health.blocking():                        # 19/11 emergency mode: no 60 s wait on a turn that can't use it
         return None
     t = timeout or TIMEOUT
     if json_mode:

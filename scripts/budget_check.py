@@ -57,6 +57,11 @@ def _save_notified(d: dict) -> None:
                              encoding='utf-8')
 
 
+from utils.budget import month_cap
+month_key = datetime.utcnow().strftime('%Y-%m')
+# 19/11 a month can have its own cap (config/budget_caps.json); HARD_LIMIT_USD is the default
+HARD_LIMIT_USD = month_cap(month_key, HARD_LIMIT_USD)
+SOFT_LIMIT_USD = min(SOFT_LIMIT_USD, round(HARD_LIMIT_USD * 0.4, 2))
 s = cost_summary('month')
 total = float(s.get('total_usd', 0))
 n_calls = int(s.get('n_calls', 0))

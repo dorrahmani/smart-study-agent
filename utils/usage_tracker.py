@@ -3,7 +3,10 @@
 Append-only JSONL at data/usage.jsonl. One line per API call.
 
 Schema:
-    {ts, service, model, input_tokens, output_tokens, audio_seconds, cost_usd, op}
+    {ts, service, model, input_tokens, output_tokens, audio_seconds, cost_usd, op[, cached_tokens][, extra]}
+    cached_tokens (18/11): the part of input_tokens Gemini served from its implicit context cache (usage_metadata
+    .cached_content_token_count). They are billed at CACHED_SHARE of the input price; extra.thoughts = thinking tokens
+    (already inside output_tokens).
 
 Public API:
     log_usage(service, model, **kw)  — record one call
@@ -46,7 +49,14 @@ PRICING: dict[str, dict[str, float]] = {
     'whisper-1':                {'audio_per_minute': 0.006},
     'gpt-4o-transcribe':        {'audio_per_minute': 0.006},
     'gpt-4o-mini-transcribe':   {'audio_per_minute': 0.003},
+    # 19/11 lectures transcribed on the VM's own CPU (faster-whisper + ivrit-ai) — logged for the minutes, costs nothing
+    'local-ivrit-whisper':      {'audio_per_minute': 0.0},
 }
+
+
+# 18/11 implicit context caching: Google bills a cached input token at 10% of the input price on Gemini 3 (25% on 2.5).
+# The ledger feeds the budget lock and errs high on purpose, so it charges 25% everywhere.
+CACHED_SHARE = 0.25
 
 
 def _now_iso() -> str:
@@ -55,7 +65,8 @@ def _now_iso() -> str:
 
 def _estimate_cost(model: str, input_tokens: int = 0,
                    output_tokens: int = 0,
-                   audio_seconds: float = 0) -> float:
+                   audio_seconds: float = 0,
+                   cached_tokens: int = 0) -> float:
     p = PRICING.get(model)
     if not p:
         # Unknown model: never log $0 (that silently starved the budget lock).
@@ -63,7 +74,8 @@ def _estimate_cost(model: str, input_tokens: int = 0,
         p = PRICING['gemini-3.1-pro-preview'] if 'whisper' not in model and 'transcribe' not in model             else {'audio_per_minute': 0.006}
     cost = 0.0
     if input_tokens and 'in' in p:
-        cost += (input_tokens / 1_000_000) * p['in']
+        cached = max(0, min(int(cached_tokens or 0), int(input_tokens)))
+        cost += ((input_tokens - cached) + cached * CACHED_SHARE) / 1_000_000 * p['in']
     if output_tokens and 'out' in p:
         cost += (output_tokens / 1_000_000) * p['out']
     if audio_seconds and 'audio_per_minute' in p:
@@ -76,7 +88,8 @@ def log_usage(*, service: str, model: str,
               output_tokens: int = 0,
               audio_seconds: float = 0.0,
               op: str = '',
-              extra: dict | None = None) -> dict:
+              extra: dict | None = None,
+              cached_tokens: int = 0) -> dict:
     """Append one usage record. Returns the recorded dict."""
     rec = {
         'ts':            _now_iso(),
@@ -86,8 +99,10 @@ def log_usage(*, service: str, model: str,
         'input_tokens':  int(input_tokens or 0),
         'output_tokens': int(output_tokens or 0),
         'audio_seconds': round(float(audio_seconds or 0.0), 1),
-        'cost_usd':      _estimate_cost(model, input_tokens, output_tokens, audio_seconds),
+        'cost_usd':      _estimate_cost(model, input_tokens, output_tokens, audio_seconds, cached_tokens),
     }
+    if cached_tokens:
+        rec['cached_tokens'] = int(cached_tokens)
     if extra:
         rec['extra'] = extra
     try:
@@ -109,9 +124,12 @@ def log_gemini(resp: Any, model: str, op: str = '') -> dict | None:
         in_t = getattr(um, 'prompt_token_count', 0) or 0
         # thinking models bill their "thoughts" as output — ignoring them was a
         # big part of why the ledger read 3-5x lower than the Google invoice
-        out_t = (getattr(um, 'candidates_token_count', 0) or 0) +                 (getattr(um, 'thoughts_token_count', 0) or 0)
-        return log_usage(service='gemini', model=model,
-                         input_tokens=in_t, output_tokens=out_t, op=op)
+        thoughts = getattr(um, 'thoughts_token_count', 0) or 0
+        out_t = (getattr(um, 'candidates_token_count', 0) or 0) + thoughts
+        cached = getattr(um, 'cached_content_token_count', 0) or 0
+        return log_usage(service='gemini', model=model, input_tokens=in_t, output_tokens=out_t, op=op,
+                         cached_tokens=cached if isinstance(cached, int) else 0,
+                         extra={'thoughts': thoughts} if isinstance(thoughts, int) and thoughts else None)
     except Exception:
         return None
 
