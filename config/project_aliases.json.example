@@ -1,0 +1,5 @@
+{
+ "_note": "Optional. Your own words for a project in the digest (scripts/pc/projects_digest.py) -> its name there. Copy to config/project_aliases.json.",
+ "the shop site": "my-shop",
+ "האתר של החנות": "my-shop"
+}

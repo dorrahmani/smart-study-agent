@@ -157,8 +157,9 @@ def _norm(s: str) -> str:
 def default_paths(root: Path = ROOT) -> dict:
     d, logs = root / 'data', root / 'logs'
     return {'convo': d / 'agent_conversations.jsonl', 'mind': d / 'mind_log.jsonl', 'ledger': d / 'usage.jsonl',
-            'feedback': d / 'feedback.jsonl', 'jobs': d / 'claude_jobs.json', 'security': d / 'security_status.json',
+            'feedback': d / 'feedback.jsonl', 'ratings': d / 'feedback_ratings.jsonl', 'jobs': d / 'claude_jobs.json', 'security': d / 'security_status.json',
             'health': d / 'pipeline_health_seen.json', 'sessions': d / 'claude_sessions', 'failed': d / 'wa_spool' / 'failed',
+            'web': d / 'websearch_log.jsonl', 'codify_log': d / 'codify_log.jsonl',
             'worker_log': logs / 'wa_worker.log', 'deploy_logs': sorted(logs.glob('deploy.log*'))}
 
 
@@ -170,7 +171,7 @@ def precheck(paths: dict | None = None, since: datetime | None = None, now: date
     s = {'since': since.isoformat(timespec='minutes'), 'turns': 0, 'complaints': [], 'repeats': [], 'cant': [],
          'slow': [], 'expensive': [], 'mind_fail': {}, 'gate_refused': [], 'deploy_rejected': 0, 'job_fail': [],
          'flags': 0, 'worker_errors': 0, 'failed_msgs': 0, 'security_fail': [], 'alerts': [], 'costs': [],
-         'sessions': [], 'patterns': []}
+         'sessions': [], 'patterns': [], 'codify': []}
     own: list[tuple[datetime, str]] = []
     history: list[tuple[datetime, str]] = []
     for r in _jsonl(paths['convo']):
@@ -249,6 +250,7 @@ def precheck(paths: dict | None = None, since: datetime | None = None, now: date
     except OSError:
         pass
     s['patterns'] = habits(history)
+    s['codify'] = codify_candidates(paths, now, fresh=since)
     return s
 
 
@@ -274,6 +276,85 @@ def habits(history: list[tuple[datetime, str]]) -> list[list]:
             if len(w) >= PATTERN_WEEKS][:5]
 
 
+# ── 19/11 "do it in Python, so next time you know how": what keeps costing several model rounds ─────────────────────
+CODIFY_ROUNDS = 3                                 # model calls in one turn…
+CODIFY_TOOLS = 2                                  # …or tool calls: the task wasn't a one-step answer
+CODIFY_REPEAT = 2                                 # the same task type this many times in PATTERN_DAYS = a pattern
+JOIN_S = 180                                      # mind_log's row is written when the turn ends: his message is before
+
+
+def codify_candidates(paths: dict, now: datetime, since: datetime | None = None,
+                      fresh: datetime | None = None) -> list[dict]:
+    """Deterministic. Turns where the agent needed ≥CODIFY_ROUNDS model rounds or ≥CODIFY_TOOLS tool calls, grouped by
+    task type (the set of tools it used), and the web questions the Python search couldn't answer (data/
+    websearch_log.jsonl, path 'grounded') grouped by their route. A group seen ≥CODIFY_REPEAT times is a candidate
+    for a deterministic tool or a fast-path intent. Each candidate turn is logged once to paths['codify_log'].
+    'new' = its turns since `fresh` (the last run): only a group with new turns is evidence for a run, so an old pattern
+    doesn't wake the scout every day."""
+    since = since or now - timedelta(days=PATTERN_DAYS)
+    fresh = fresh or since
+    asks = sorted((t, str(r.get('in') or '')[:120]) for r in _jsonl(paths['convo'])
+                  if r.get('role') == 'owner' and r.get('kind') == 'text' and r.get('forwarded', True) is False
+                  and (t := _dt(r.get('ts'))) and since - timedelta(seconds=JOIN_S) <= t <= now)
+    groups: dict[str, dict] = {}
+    turns = []
+    for r in _jsonl(paths['mind']):
+        t = _dt(r.get('ts'))
+        tools = [str(x) for x in r.get('tools') or []]
+        if not t or not since <= t <= now or (int(r.get('rounds') or 0) < CODIFY_ROUNDS and len(tools) < CODIFY_TOOLS):
+            continue
+        q = next((x for at, x in reversed(asks) if timedelta(0) <= t - at <= timedelta(seconds=JOIN_S)), '')
+        key = '+'.join(sorted(set(tools))) or 'בלי כלים'
+        g = groups.setdefault(key, {'type': key, 'n': 0, 'new': 0, 'rounds': 0, 'cost': 0.0, 'asks': []})
+        g['n'] += 1
+        g['new'] += int(t >= fresh)
+        g['rounds'] += int(r.get('rounds') or 0)
+        g['cost'] += float(r.get('cost') or 0)
+        if q and q not in g['asks']:
+            g['asks'].append(q)
+        turns.append({'ts': t.isoformat(timespec='seconds'), 'type': key, 'rounds': r.get('rounds'), 'tools': tools,
+                      'cost': r.get('cost'), 'q': q})
+    for r in _jsonl(paths.get('web') or Path('/nonexistent')):
+        t = _dt(r.get('ts'))
+        if not t or not since <= t <= now or r.get('path') != 'grounded':
+            continue
+        key = f"web_search:{r.get('route') or '?'}"
+        g = groups.setdefault(key, {'type': key, 'n': 0, 'new': 0, 'rounds': 0, 'cost': 0.0, 'asks': []})
+        g['n'] += 1
+        g['new'] += int(t >= fresh)
+        g['cost'] += float(r.get('cost') or 0)
+        if r.get('q') and r['q'] not in g['asks']:
+            g['asks'].append(str(r['q'])[:120])
+        turns.append({'ts': t.isoformat(timespec='seconds'), 'type': key, 'rounds': 1, 'tools': ['web_search'],
+                      'cost': r.get('cost'), 'q': str(r.get('q') or '')[:120]})
+    for r in _jsonl(paths.get('ratings') or Path('/nonexistent')):     # 17/11 a 👎 reaction on an answer (agent/feedback)
+        t = _dt(r.get('ts'))
+        if not t or not since <= t <= now or r.get('value') != 'down':
+            continue
+        key = '👎 תשובות שהמשתמש סימן'
+        g = groups.setdefault(key, {'type': key, 'n': 0, 'new': 0, 'rounds': 0, 'cost': 0.0, 'asks': []})
+        g['n'] += 1
+        g['new'] += int(t >= fresh)
+        q = str(r.get('q') or r.get('a') or '')[:120]
+        if q and q not in g['asks']:
+            g['asks'].append(q)
+        turns.append({'ts': t.isoformat(timespec='seconds'), 'type': key, 'rounds': 0, 'tools': [], 'cost': 0, 'q': q,
+                      'answer_id': r.get('answer_id', ''), 'question_id': r.get('question_id', '')})
+    if paths.get('codify_log') and turns:
+        have = {(x.get('ts'), x.get('type')) for x in _jsonl(paths['codify_log'])}
+        new = [x for x in turns if (x['ts'], x['type']) not in have]
+        if new:
+            try:
+                Path(paths['codify_log']).parent.mkdir(parents=True, exist_ok=True)
+                with open(paths['codify_log'], 'a', encoding='utf-8') as f:
+                    f.writelines(json.dumps(x, ensure_ascii=False) + '\n' for x in new)
+            except OSError:
+                pass
+    out = [g | {'cost': round(g['cost'], 3), 'asks': g['asks'][:4]} for g in groups.values()
+           if g['n'] >= CODIFY_REPEAT or g['type'].startswith('👎')]   # one 👎 is already his word
+    return sorted(out, key=lambda g: (-g['n'], -g['cost']))[:6]
+
+
 def spike(sig: dict) -> list[str]:
     """What brings the loop back to daily."""
     why = []
@@ -297,7 +378,8 @@ def spike(sig: dict) -> list[str]:
 def evidence(sig: dict) -> bool:
     """Anything at all to study. Without it, no Claude run."""
     return bool(spike(sig) or any(sig.get(k) for k in ('repeats', 'cant', 'slow', 'expensive', 'mind_fail', 'job_fail',
-                                                       'worker_errors', 'failed_msgs', 'alerts', 'sessions', 'patterns')))
+                                                       'worker_errors', 'failed_msgs', 'alerts', 'sessions', 'patterns'))
+                or any(g.get('new') for g in sig.get('codify') or []))
 
 
 # ── cadence ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -364,6 +446,14 @@ SCOUT_TASK = """סריקת שיפור עצמי של הבוט ({day}). אתה ה�
 2. מה המשתמש תיקן ידנית בשיחות Claude Code (הסעיף "שיחות קלוד") — הדבר שהוא חוזר לבקש הוא האות הכי חזק.
 3. הרגלים שאפשר לאטמט ("כל שלישי הוא שואל X").
 4. קרא את הקוד הרלוונטי בתיקייה הזו כדי שההצעה תהיה מדויקת (קובץ, פונקציה, מה בדיוק לשנות).
+5. "לקודד בפייתון" (הסעיף "חוזר ויקר" באותות): משימה שחוזרת ועולה כמה סבבי מודל / כלים, או שאלת רשת שהחיפוש בפייתון
+   לא ענה עליה. קרא קודם את docs/SELF_IMPROVE.md ואת docs/SKILLS.md (רשימת הכלים שכבר קודדו).
+
+## הכלל: לקודד, לא לכוונן prompt
+דפוס שחוזר הופך לכלי דטרמיניסטי בפייתון או לכוונה ב-fast-path (agent/fastpath.py), עם בדיקות — ולא לתיקון ניסוח
+ב-prompt. קודם להרחיב כלי קיים מ-docs/SKILLS.md, ורק אם אין — כלי חדש. ממצא כזה: "kind": "codify", ו-"change" מפרט
+מודול, שם פונקציה, קלט/פלט, ואיפה הבוט קורא לה; "test" מפרט מקרה שנכשל היום ועובר אחרי. ממצא A מסוג codify מוסיף גם
+שורה ל-docs/SKILLS.md. תיקון prompt מוצע רק כשאין דרך דטרמיניסטית, ואז כתוב למה.
 
 ## סיווג כל ממצא
 A — תיקון קטן ובטוח שכולו בקבצים שמותר לפרוס מהטלפון ({allowed}), ושאפשר לבדוק אותו במקרה ב-tests/improve_cases.json
@@ -376,9 +466,10 @@ C — רעיון שדורש החלטה של המשתמש: שאלה אחת קצר
 
 ## הפלט — חובה
 כתוב את הקובץ {findings_file} (בשורש התיקייה הזו, לא לעשות לו commit) עם JSON בלבד:
-{{"findings": [{{"rank": 1, "class": "A", "title": "שורה אחת בעברית", "evidence": "מה ראית ומתי (בלי פרטים אישיים)",
-  "change": "מה בדיוק לשנות", "files": ["agent/timetable.py"], "test": "המקרה ל-tests/improve_cases.json",
-  "question": ""}}]}}
+{{"findings": [{{"rank": 1, "class": "A", "kind": "codify", "title": "שורה אחת בעברית",
+  "evidence": "מה ראית ומתי (בלי פרטים אישיים)", "change": "מה בדיוק לשנות", "files": ["agent/timetable.py"],
+  "test": "המקרה ל-tests/improve_cases.json", "question": ""}}]}}
+(kind: "codify" לכלי/כוונה דטרמיניסטיים, "fix" לכל השאר.)
 עד 8 ממצאים, מהחשוב לפחות. אם אין כלום — {{"findings": []}}. בסוף: 3 שורות סיכום בעברית.
 
 ## השיחות
@@ -398,6 +489,8 @@ FIX_TASK = """שיפור עצמי (מסריקה {run}, ממצא {rank}): {title}
   בפורמט {{"id": "...", "module": "agent.x", "fn": "name", "args": [...], "expect": {{"equals"|"contains"|"lacks": ...}},
   "why": "..."}}, שנכשל לפני התיקון ועובר אחריו. module אחד מ-{case_modules}.
 - אם הבעיה כבר לא קיימת בקוד הנוכחי — אל תשנה כלום ודווח.
+- קרא קודם docs/SELF_IMPROVE.md ו-docs/SKILLS.md. דפוס שחוזר נפתר בקוד דטרמיניסטי (פונקציה עם בדיקה), לא בניסוח prompt;
+  הרחב כלי קיים לפני שאתה כותב חדש. אם קודדת כלי או הרחבת אחד — הוסף/עדכן את השורה שלו ב-docs/SKILLS.md (מותר תמיד).
 - כל הבדיקות חייבות לעבור. commit אחד עם הודעה ברורה. סיכום של שורה אחת בעברית בהתחלה: "תיקון: …"."""
 
 
@@ -420,6 +513,10 @@ def signals_text(sig: dict, mark) -> str:
     if sig['mind_fail'] or sig['gate_refused'] or sig['job_fail']:
         out.append(f"כשלי מוח: {sig['mind_fail']} · השער עצר: {dict(Counter(sig['gate_refused']))} · "
                    f"משימות קלוד שנכשלו: {len(sig['job_fail'])}")
+    if sig.get('codify'):
+        out.append('חוזר ויקר — לקודד בפייתון (סוג משימה: פעמים ב-35 יום / חדשות מאז הבדיקה, סבבים, עלות; דוגמאות):\n' + '\n'.join(
+            f"• {g['type']}: ×{g['n']} (חדשות {g.get('new', 0)}), {g['rounds']} סבבים, ${g['cost']} — "
+            + mark(' | '.join(g['asks'][:3]) or '—') for g in sig['codify']))
     if sig['costs']:
         out.append('עלות לפי פיצ\'ר: ' + ' · '.join(f'{op} ${c}' for op, c in sig['costs']))
     if sig['alerts']:
@@ -469,6 +566,7 @@ def parse_findings(raw: str) -> list[dict]:
             continue
         files = [str(x)[:120] for x in f.get('files') or [] if isinstance(x, str)][:6] if isinstance(f.get('files'), list) else []
         out.append({'class': str(f.get('class') or 'B').strip().upper()[:1], 'title': _clean(f.get('title'), 140),
+                    'kind': 'codify' if str(f.get('kind') or '').strip().lower() == 'codify' else 'fix',
                     'evidence': _clean(f.get('evidence'), 500), 'change': _clean(f.get('change'), 900), 'files': files,
                     'test': _clean(f.get('test'), 400), 'question': _clean(f.get('question'), 200),
                     'rank': f.get('rank') if isinstance(f.get('rank'), int) else 99})
@@ -508,7 +606,8 @@ def add_backlog(items: list[dict], now: datetime, path: Path | None = None) -> i
             old['evidence'] = f['evidence'] or old.get('evidence', '')
             continue
         new += 1
-        have.append({'id': secrets.token_hex(3), 'title': f['title'], 'evidence': f['evidence'], 'change': f['change'],
+        have.append({'id': secrets.token_hex(3), 'title': f['title'], 'kind': f.get('kind', 'fix'),
+                     'evidence': f['evidence'], 'change': f['change'],
                      'files': f['files'], 'why_not_auto': f.get('why', ''), 'first': now.isoformat(timespec='minutes'),
                      'last': now.isoformat(timespec='minutes'), 'seen': 1, 'status': 'open'})
     opened = [b for b in have if b.get('status', 'open') == 'open']

@@ -73,10 +73,12 @@ ALLOW = {
                         r'|^(?:student\d*@mail\.tau\.ac\.il|prof@tau\.ac\.il|noreply@anthropic\.com|git@github\.com)$'
                         r'|^[^@]+@(?:2x|3x)\.|\.(?:png|jpg|svg|webp)$'
                         # placeholders used by the tests (short local parts, evil.com, fake JIDs/groups):
-                        r'|^[a-z]{1,2}(?:\.[a-z])?@(?:[a-z]+\.)*(?:tau\.ac\.il|b\.co|evil\.com|nottau\.ac\.il|tau\.ac\.il\.evil\.com|s\.whatsapp\.net|g\.us)$'
+                        r'|^-?[a-z]{1,2}(?:\.[a-z])?@(?:[a-z]+\.)*(?:tau\.ac\.il|b\.co|evil\.com|nottau\.ac\.il|tau\.ac\.il\.evil\.com|s\.whatsapp\.net|g\.us)$'
                         r'|^(?:attacker@evil\.com|(?:library|secretary|news|lect\d*|office)@(?:tauex\.)?tau\.ac\.il|news@example-library\.org'
                         r'|studies@group\.calendar\.google\.com|claude-agent@smart-study\.local|your_email@gmail\.com|-?X@(?:gmail|Y)\.com'
-                        r'|-a\.b@gmail\.com|(?:other|gid|123-456|120363-1)@g\.us|(?:9725\d0000\d{3}|972501234567|12345\d+)@s\.whatsapp\.net)$'),
+                        r'|-a\.b@gmail\.com|(?:other|gid|123-456|120363-1)@g\.us|(?:9725\d0000\d{3}|972501234567|12345\d+)@s\.whatsapp\.net'
+                        # test chat ids: 'owner@s.whatsapp.net', '222@s.whatsapp.net', '120363-9@g.us' …
+                        r'|(?:owner|own|par|new|lid|\d{3,6}|120363(?:-\d+)?)@(?:s\.whatsapp\.net|g\.us))$'),
     'ipv4': re.compile(r'^(?:127\.0\.0\.1|0\.0\.0\.0|255\.255\.255\.\d+|192\.0\.2\.\d+|198\.51\.100\.\d+|203\.0\.113\.\d+'
                        r'|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|100\.64\.0\.0|100\.100\.100\.100'
                        r'|127\.0\.0\.53|1\.1\.1\.1|8\.8\.8\.8|169\.254\.169\.254|169\.254\.0\.0|\d+\.\d+\.\d+\.0)$'),
