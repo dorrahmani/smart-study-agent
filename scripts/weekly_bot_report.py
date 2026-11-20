@@ -57,7 +57,8 @@ except Exception:                              # no tzdata (Windows without the 
 
 
 def default_paths(root: Path = ROOT) -> dict:
-    return {'ledger': root / 'data' / 'usage.jsonl', 'convo': root / 'data' / 'agent_conversations.jsonl',
+    return {'ratings': root / 'data' / 'feedback_ratings.jsonl', 'rhythm': root / 'data' / 'rhythm.json',
+            'ledger': root / 'data' / 'usage.jsonl', 'convo': root / 'data' / 'agent_conversations.jsonl',
             'mind': root / 'data' / 'mind_log.jsonl', 'jobs': root / 'data' / 'claude_jobs.json',
             'undelivered': root / 'data' / 'undelivered_alerts.jsonl',
             'security': root / 'data' / 'security_status.json',
@@ -213,7 +214,41 @@ def collect(paths: dict | None = None, now: datetime | None = None, git_log=fixe
     return {'since': since, 'now': now, 'spend': spend(paths, since, now), 'turns': turns(paths, since, now), 'jobs': j,
             'fixes': git_log(paths['git_dir'], j['deploys']) if j['deploys'] else [],
             'undelivered': _undelivered(paths.get('undelivered')), 'security': _security(paths.get('security'), now),
-            'improve': _improve(paths, since), 'filtered': _filtered(paths.get('filtered'), since)}
+            'improve': _improve(paths, since), 'filtered': _filtered(paths.get('filtered'), since),
+            'friends': _friends(since), 'feedback': _feedback(since, paths),
+            'rhythm': _rhythm(paths)}
+
+
+def _feedback(since: datetime, paths: dict) -> str:
+    """17/11 the 👍/👎 reactions on answers (agent/feedback)."""
+    if not paths.get('ratings'):
+        return ''
+    try:
+        from agent import feedback
+        local = since.astimezone(LOCAL).replace(tzinfo=None) if LOCAL else since.replace(tzinfo=None)
+        return feedback.weekly_line(local, paths.get('ratings'))
+    except Exception:
+        return ''
+
+
+def _rhythm(paths: dict) -> str:
+    """17/11 his learned rhythm (agent/rhythm): when he answers, what waits, what is backed off."""
+    if not paths.get('rhythm'):
+        return ''
+    try:
+        from agent import rhythm
+        return rhythm.schedule_text(rhythm.load(path=Path(paths['rhythm'])))
+    except Exception:
+        return ''
+
+
+def _friends(since: datetime) -> str:
+    """17/11 the friends' group (agent/group_helper.py): questions, answered, not known, refused. Counts only."""
+    try:
+        from agent import group_helper
+        return group_helper.weekly_line(since)
+    except Exception:
+        return ''
 
 
 def _filtered(path, since: datetime) -> int:
@@ -309,7 +344,8 @@ def build_text(r: dict) -> str:
                  + (f" (לולאת המוח ${tu['mind_cost']:.2f})" if tu['mind'] else '') + '.')
     if sp['top']:
         lines.append('   הכי יקר: ' + ' · '.join(f'{op} ${c:.2f}' for op, c in sp['top']))
-    lines.append(f"   החודש: ${sp['month']:.2f} מתוך ${HARD_LIMIT_USD:.0f} (נעילה)"
+    from utils.budget import month_cap
+    lines.append(f"   החודש: ${sp['month']:.2f} מתוך ${month_cap(None, HARD_LIMIT_USD):.0f} (נעילה)"
                  + (f" · {sp['free_calls']} קריאות על המנוי ($0)" if sp['free_calls'] else ''))
     who = ' · '.join(f'{ROLE.get(k, k)} {v}' for k, v in tu['who'].most_common())
     lines.append(f"💬 {tu['total']} פניות" + (f' ({who})' if who else '') + (f", {tu['mind']} דרך המוח" if tu['mind'] else ''))
@@ -331,6 +367,12 @@ def build_text(r: dict) -> str:
         js += f" (מתוכן {jb['nightly']} סקירות לילה)"
     lines.append(js)
     lines.append(f"🚀 {len(jb['deploys'])} פריסות, {jb['rejected']} נדחו בבדיקות")
+    if r.get('friends'):
+        lines.append(r['friends'])
+    if r.get('feedback'):
+        lines.append(r['feedback'])
+    if r.get('rhythm'):
+        lines.append(r['rhythm'])
     lines += security_lines(r.get('security'))
     if r.get('undelivered'):
         u = r['undelivered']
@@ -352,6 +394,12 @@ def _week_key(d: date | None = None) -> str:
 def main(argv: list[str] | None = None, paths: dict | None = None, sent_path: Path | None = None, send=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     dry, force = '--dry' in argv or '--dry-run' in argv, '--force' in argv
+    live = paths is None and sent_path is None and send is None   # a test passes one of them
+    if '--personal-dry' in argv:                 # 17/11 the weekly personal summary (agent/weekly_personal), printed only
+        from agent import weekly_personal
+        from whatsapp import outbox
+        print(weekly_personal.build_text(weekly_personal.collect(chat=outbox.owner_chat())))
+        return 0
     text = build_text(collect(paths))
     if dry:
         print(text)
@@ -372,6 +420,13 @@ def main(argv: list[str] | None = None, paths: dict | None = None, sent_path: Pa
             print('no owner chat')
             return 1
         send = lambda t: outbox.send_text(chat, t)
+    if live:                                     # 17/11 his own week first, its own message (agent/weekly_personal)
+        try:
+            from agent import weekly_personal
+            from whatsapp import outbox as _ob
+            print('personal:', weekly_personal.send_once(_ob.owner_chat(), send, force=force))
+        except Exception as e:
+            print(f'personal summary failed: {e!r}'[:200])
     if not send(text):
         print('send failed')
         return 1

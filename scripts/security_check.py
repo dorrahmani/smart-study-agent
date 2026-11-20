@@ -78,12 +78,16 @@ API_ONLY_EXPECTED = {
     'agent/course_lookup.py': {'_ask'},
     'agent/learn.py': {'extract'},
     'agent/secretary.py': {'ask', 'ask_url'},
+    'agent/starter_help.py': {'_local', 'screenshot'},      # 17/11 friends' questions about the public repo
+    'agent/group_helper.py': {'reply_for'},
     'agent/web_agent.py': {'_ask'},
     'integrations/tau_mail.py': {'triage', 'answer'},
 }
 CODE_CAPS = (             # (label, file, regex for the number, max allowed)
     ('קבוצות: DAY_CALLS', 'agent/group_mode.py', r'^DAY_CALLS\s*=\s*(\d+)', 100),
     ('קבוצות: MAX_REPLIES', 'agent/group_mode.py', r'^MAX_REPLIES\s*=\s*(\d+)', 20),
+    ('חברים: תשובות לחבר ליום', 'agent/group_helper.py', r'^FRIEND_DAY\s*=\s*(\d+)', 30),
+    ('חברים: תשובות לקבוצה ליום', 'agent/group_helper.py', r'^GROUP_DAY\s*=\s*(\d+)', 100),
     ('תקרת בת הזוג ליום', 'utils/budget.py', r"'partner':\s*(\d+)", 500),
     ('תקרת אנשי קשר ליום', 'utils/budget.py', r"'contact':\s*(\d+)", 200),
     ('נעילת $50', 'scripts/budget_check.py', r'^HARD_LIMIT_USD\s*=\s*([\d.]+)', 50),

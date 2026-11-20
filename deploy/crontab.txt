@@ -66,3 +66,19 @@
 # hours; Sun–Thu 08:40/12:40/16:40 IL (06:40/10:40/14:40 UTC). One state read per course page, no LLM, backs off on
 # errors, never alerts (not wrapped on purpose). To enable: remove the leading "# " below, then `crontab deploy/crontab.txt`.
 # 40 6,10,14 * * 0-4 TZ=Asia/Jerusalem bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 timeout 600 venv/bin/python3 scripts/moodle_light_check.py" >> /home/ubuntu/smart_study_agent/logs/moodle_light_check.log 2>&1
+# Nightly consistency check (19/11/26, no LLM): contradictions between the stores; fixes only the provably safe ones
+# (moved aside / deactivated, logged with undo in data/consistency_fixes.jsonl); new findings → the owner at most once a day
+# (utils.notify: quiet hours → the morning digest). 02:50 IL
+50 2 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Consistency Check" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/consistency_check.py" >> /home/ubuntu/smart_study_agent/logs/consistency_check.log 2>&1
+# 19/11: synced with the live crontab (installed on the VM without being added here)
+0 7 * * 0 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Weekly Bot Report" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/weekly_bot_report.py" >> /home/ubuntu/smart_study_agent/logs/weekly_bot_report.log 2>&1
+*/20 * * * * cd /home/ubuntu/smart_study_agent && if [ -f scripts/nlm_keepalive.py ]; then PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/nlm_keepalive.py; else venv/bin/python3 -m notebooklm --quiet auth refresh --verify --json; fi >> /home/ubuntu/smart_study_agent/logs/nlm_keepalive.log 2>&1
+30 3 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Security Check" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/security_check.py" >> /home/ubuntu/smart_study_agent/logs/security_check.log 2>&1
+40 6,10,14 * * 0-4 TZ=Asia/Jerusalem bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 timeout 600 venv/bin/python3 scripts/moodle_light_check.py" >> /home/ubuntu/smart_study_agent/logs/moodle_light_check.log 2>&1
+40 8,23 * * * TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Vault Assistant" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/vault_assistant.py" >> /home/ubuntu/smart_study_agent/logs/vault_assistant.log 2>&1
+# Backup restore test (18/11/26): Sunday 05:30 UTC — restores the newest Drive backup into ~/tmp, compares counts/bytes, checks the GPG bundle (structure only; the private key is on the PC) and the local archives; WhatsApp only on a FAIL
+30 5 * * 0 TZ=Asia/Jerusalem /home/ubuntu/smart_study_agent/scripts/run_with_alert.sh "Backup Restore Test" bash -c "cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 venv/bin/python3 scripts/backup_restore_test.py" >> /home/ubuntu/smart_study_agent/logs/backup_restore_test.log 2>&1
+# WhatsApp bridge watch (19/11/26): logged out / no session → alert at once, disconnected or service down 10+ min → alert,
+# OUTSIDE WhatsApp (email to the owner via the Gmail send token; ntfy push if NTFY_TOPIC is set in .env); once per incident + one "חזר".
+# Reads status.json + the bridge journal; no LLM; not wrapped on purpose (it is the alert).
+*/5 * * * * cd /home/ubuntu/smart_study_agent && PYTHONIOENCODING=utf-8 timeout 120 venv/bin/python3 scripts/wa_bridge_watch.py >> /home/ubuntu/smart_study_agent/logs/wa_bridge_watch.log 2>&1

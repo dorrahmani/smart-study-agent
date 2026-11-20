@@ -27,9 +27,10 @@ if [ "$RC" -ne 0 ]; then
       venv/bin/python3 -c "
 import os, sys, datetime
 sys.path.insert(0, '.')
-from utils.notify import notify
+from utils.notify import notify, failure_key
 n, rc, tail = os.environ['CRON_NAME'], os.environ['CRON_RC'], os.environ.get('CRON_TAIL', '')
-notify(f'⚠️ משימה מתוזמנת נכשלה: {n} (קוד {rc})\n\n{tail[-400:]}', key=f'cron-fail:{n}:{datetime.date.today()}')
+# 16/11: the same error is one alert a week (Brain Sync's AuthError came six mornings in a row)
+notify(f'⚠️ משימה מתוזמנת נכשלה: {n} (קוד {rc})\n\n{tail[-400:]}', key=failure_key(n, tail))
 " >/dev/null 2>&1 ) || true
 fi
 

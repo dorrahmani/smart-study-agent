@@ -154,6 +154,7 @@ _ALL_TAB_DEFS = [
     ('notebooklm',  "🎓 NotebookLM",  _view("notebooklm")),
     ('view',        "📖 צפייה",       _view("viewer")),
     ('health',      "🔗 בריאות",      _view("vault")),
+    ('system',      "🩺 מערכת",       _view("system")),
     ('recipients',  "📧 נמענים",      _view("recipients")),
     ('costs',       "💰 עלויות",      _view("costs", providers=False)),
     ('run',         "▶️ הרץ עכשיו",   _view("run")),
